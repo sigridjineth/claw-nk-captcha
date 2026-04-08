@@ -1,8 +1,8 @@
-# NK CAPTCHA — OpenClaw Plugin
+# ANTI NK CAPTCHA — OpenClaw Plugin
 
 > **Verify candidates are not DPRK operatives by asking them to type — and speak — anti-regime phrases.**
 
-North Korean hackers increasingly infiltrate companies through fake job applications. NK CAPTCHA provides a simple but effective verification: ask the candidate to criticize the Kim regime. A genuine North Korean operative cannot comply without risking execution.
+North Korean hackers increasingly infiltrate companies through fake job applications. ANTI NK CAPTCHA provides a simple but effective verification: ask the candidate to criticize the Kim regime. A genuine North Korean operative cannot comply without risking execution.
 
 ## Screenshots
 
@@ -11,14 +11,14 @@ North Korean hackers increasingly infiltrate companies through fake job applicat
   <img src="assets/screenshot-challenge.png" width="320" alt="Challenge screen" />
 </p>
 <p align="center">
-  <img src="assets/screenshot-typing.png" width="320" alt="Typing verification" />
+  <img src="assets/screenshot-typing.png" width="320" alt="Typing verification in progress" />
   <img src="assets/screenshot-pass.png" width="320" alt="Verification passed" />
 </p>
 <p align="center">
   <img src="assets/screenshot-fail.png" width="320" alt="Verification failed" />
 </p>
 
-## Demo
+## Quick Start
 
 Open `demo/index.html` in any browser — no build step, no dependencies.
 
@@ -32,7 +32,7 @@ open demo/index.html
 1. A random anti-regime phrase is displayed in Korean and English
 2. The user types the phrase exactly (90%+ Levenshtein similarity required)
 3. Real-time character-by-character feedback shows matching progress
-4. Pass/fail verdict is issued with a verification code
+4. Pass/fail verdict is issued with a unique verification code
 
 ### Voice Recording Mode
 1. The same challenge phrase is displayed
@@ -40,32 +40,44 @@ open demo/index.html
 3. Recording duration and validity are checked (minimum 1.5s)
 4. Combined text + voice verification for maximum assurance
 
-## Install as OpenClaw Plugin
+## Install
+
+### From ClawHub (Recommended)
+
+```bash
+openclaw plugins install clawhub:openclaw-nk-captcha
+openclaw gateway restart
+```
 
 ### From GitHub
 
 ```bash
-git clone https://github.com/sigridjineth/anti-nk-claw.git
-openclaw plugins install ./anti-nk-claw
+git clone https://github.com/sigridjineth/claw-nk-captcha.git
+openclaw plugins install ./claw-nk-captcha
 openclaw gateway restart
 ```
 
-### From ClawHub
+### Manual Installation
 
 ```bash
-openclaw plugins install clawhub:@sigridjineth/openclaw-nk-captcha
+cd ~/.openclaw/extensions
+git clone https://github.com/sigridjineth/claw-nk-captcha.git nk-captcha
 ```
 
-### From npm (local)
+Then add to your OpenClaw config:
 
-```bash
-openclaw plugins install ./path-to-this-repo
-openclaw gateway restart
+```json5
+{
+  plugins: {
+    load: { paths: ["~/.openclaw/extensions/nk-captcha"] },
+    entries: {
+      "nk-captcha": { enabled: true }
+    }
+  }
+}
 ```
 
 ### Configuration
-
-In your OpenClaw config:
 
 ```json5
 {
@@ -75,8 +87,8 @@ In your OpenClaw config:
         enabled: true,
         config: {
           locale: "both",              // "ko", "en", or "both"
-          timeoutSeconds: 60,          // seconds to complete challenge
-          challengeCount: 1,           // phrases per verification
+          timeoutSeconds: 60,          // time limit for verification
+          challengeCount: 1,           // phrases per session
           enableMediaRecording: true,  // require voice recording
           minRecordingDurationMs: 1500 // minimum recording length (ms)
         }
@@ -113,22 +125,16 @@ Verify typed responses.
 ```json
 {
   "responses": [
-    { "challengeId": "dictator-1", "userInput": "김정은은 독재자이다" }
+    { "challengeId": "dictator-1", "userInput": "Kim Jong-un is a dictator" }
   ]
 }
 ```
 
-Returns pass/fail with similarity score. 90%+ similarity = pass (allows minor typos).
+Returns pass/fail with similarity score. 90%+ similarity passes (allows minor typos).
 
 ### `nk_captcha_media_challenge`
 
-Generate a voice recording challenge.
-
-```json
-{ "count": 1, "locale": "ko" }
-```
-
-Returns challenge with recording requirements (format, min duration, min size).
+Generate a voice recording challenge. Returns challenge with recording requirements (format, min duration, min size).
 
 ### `nk_captcha_media_verify`
 
@@ -163,19 +169,19 @@ List all available challenge phrases. Enable in config:
 
 ## Discord Bot
 
-Discord 서버에 NK CAPTCHA를 통합하세요. 새 멤버가 입장하면 자동으로 챌린지를 보내고, 통과하면 "Verified" 역할을 부여합니다.
+A standalone Discord bot is included for direct server integration. New members are auto-challenged via DM, and verified members receive a role.
 
 ```bash
 npm install discord.js
 DISCORD_TOKEN=your-token VERIFIED_ROLE_ID=role-id npx tsx discord-bot.ts
 ```
 
-**기능:**
-- `/nk-verify` 슬래시 커맨드
-- 신규 멤버 자동 DM 챌린지
-- 2분 타임아웃
-- 통과 시 역할 자동 부여
-- 실패 시 "POTENTIAL DPRK OPERATIVE" 경고
+**Features:**
+- `/nk-verify` slash command for on-demand verification
+- Auto-DM challenge on member join
+- 2-minute timeout
+- Automatic role assignment on pass
+- "POTENTIAL DPRK OPERATIVE" warning on fail
 
 ## Challenge Phrases (15 total)
 
@@ -202,17 +208,18 @@ DISCORD_TOKEN=your-token VERIFIED_ROLE_ID=role-id npx tsx discord-bot.ts
 ```
 anti-nk-claw/
 ├── README.md
-├── package.json              # npm package with openclaw metadata
+├── package.json              # npm package with OpenClaw metadata
 ├── openclaw.plugin.json      # Plugin manifest + config schema
 ├── tsconfig.json             # TypeScript config
 ├── index.ts                  # Plugin entry — 5 tools + HTTP route
+├── discord-bot.ts            # Standalone Discord bot
 ├── src/
 │   ├── challenges.ts         # 15 challenge phrases + verification logic
 │   └── captcha-ui.ts         # Full HTML/CSS/JS captcha page renderer
 ├── demo/
 │   └── index.html            # Standalone demo (no build needed)
 └── assets/
-    └── screenshot-*.png      # Screenshots for documentation
+    └── screenshot-*.png      # Documentation screenshots
 ```
 
 ## Visual Design
@@ -221,9 +228,9 @@ anti-nk-claw/
 - Glitch text animation on "NK CAPTCHA" title
 - CRT scanlines + vignette overlay
 - Real-time character-by-character feedback (green = correct, red = wrong)
-- Match meter with color transitions (red → gold → green)
+- Match meter with color transitions (red to gold to green)
 - Countdown timer with urgency pulse at 10s
-- Voice recording waveform animation
+- Voice recording with waveform animation
 - Dramatic pass/fail screens with glow effects
 
 ## Why It Works
