@@ -1,6 +1,6 @@
 {
   "name": "openclaw-nk-captcha",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "North Korea regime criticism CAPTCHA — verify candidates are not DPRK operatives by asking them to type anti-regime phrases",
   "type": "module",
   "main": "index.ts",
@@ -37,6 +37,9 @@
     "dprk"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/sigridjineth/anti-nk-claw.git"
