@@ -1,0 +1,10 @@
+discord-bot.ts
+scripts/
+node_modules/
+assets/
+demo/
+.git/
+.omc/
+.omx/
+.maestro-traces/
+*.tgz
