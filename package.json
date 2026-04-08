@@ -1,6 +1,6 @@
 {
   "name": "openclaw-nk-captcha",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "North Korea regime criticism CAPTCHA — verify candidates are not DPRK operatives by asking them to type anti-regime phrases",
   "type": "module",
   "main": "index.ts",

@@ -16,11 +16,50 @@ export default definePluginEntry({
       challengeCount?: number;
       enableMediaRecording?: boolean;
       minRecordingDurationMs?: number;
+      sttEndpoint?: string;
+      sttApiKey?: string;
+      sttModel?: string;
     };
     const locale = config.locale ?? "both";
     const challengeCount = config.challengeCount ?? 1;
     const enableMediaRecording = config.enableMediaRecording ?? false;
     const minRecordingDurationMs = config.minRecordingDurationMs ?? 1500;
+    const sttEndpoint = config.sttEndpoint ?? "https://api.openai.com/v1/audio/transcriptions";
+    const sttApiKey = config.sttApiKey ?? "";
+    const sttModel = config.sttModel ?? "whisper-1";
+
+    // ── Server-side STT via Whisper API ─────────────────────────
+    async function transcribeAudio(audioBase64: string, mimeType: string = "audio/webm"): Promise<string | null> {
+      if (!sttApiKey) return null;
+      try {
+        const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("wav") ? "wav" : "webm";
+        const binaryStr = atob(audioBase64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+        const formData = new FormData();
+        formData.append("file", new Blob([bytes], { type: mimeType }), `audio.${ext}`);
+        formData.append("model", sttModel);
+        formData.append("language", "ko");
+
+        const res = await fetch(sttEndpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${sttApiKey}` },
+          body: formData,
+        });
+
+        if (!res.ok) {
+          api.logger.warn(`STT request failed: ${res.status} ${res.statusText}`);
+          return null;
+        }
+
+        const data = await res.json() as { text?: string };
+        return data.text?.trim() ?? null;
+      } catch (err) {
+        api.logger.warn(`STT transcription error: ${err}`);
+        return null;
+      }
+    }
 
     // ── Tool: Generate a challenge ──────────────────────────────
     api.registerTool({
@@ -204,7 +243,7 @@ export default definePluginEntry({
         ),
       }),
       async execute(_id, params) {
-        const results = params.responses.map((r) => {
+        const results = await Promise.all(params.responses.map(async (r) => {
           const challenge = CHALLENGES.find((c) => c.id === r.challengeId);
           if (!challenge) {
             return {
@@ -239,15 +278,25 @@ export default definePluginEntry({
             };
           }
 
+          // Get transcript: use provided one, or run server-side STT via Whisper
+          let transcript = r.transcript ?? null;
+          let sttSource = r.transcript ? "client" : "none";
+
+          if (!transcript && sttApiKey) {
+            transcript = await transcribeAudio(r.audioBase64, r.mimeType ?? "audio/webm");
+            if (transcript) sttSource = "whisper";
+          }
+
           // Verify transcript matches challenge phrase
-          if (r.transcript) {
-            const verifyResult = verify(r.challengeId, r.transcript, locale);
+          if (transcript) {
+            const verifyResult = verify(r.challengeId, transcript, locale);
             if (!verifyResult.pass) {
               return {
                 challengeId: r.challengeId,
                 pass: false,
                 reason: `Speech transcript does not match challenge phrase (${Math.round(verifyResult.similarity * 100)}% similarity, need 90%+).`,
-                transcript: r.transcript,
+                transcript,
+                sttSource,
                 expected: verifyResult.expected,
                 similarity: verifyResult.similarity,
                 challenge: { ko: challenge.ko, en: challenge.en },
@@ -257,8 +306,9 @@ export default definePluginEntry({
             return {
               challengeId: r.challengeId,
               pass: true,
-              reason: `Speech verified: transcript matches challenge phrase (${Math.round(verifyResult.similarity * 100)}% similarity).`,
-              transcript: r.transcript,
+              reason: `Speech verified via ${sttSource}: transcript matches (${Math.round(verifyResult.similarity * 100)}% similarity).`,
+              transcript,
+              sttSource,
               similarity: verifyResult.similarity,
               durationMs: r.durationMs,
               sizeBytes: audioBytes,
@@ -267,17 +317,18 @@ export default definePluginEntry({
             };
           }
 
-          // No transcript provided — pass with warning (fallback to recording-only check)
+          // No transcript and no STT configured — pass with warning
           return {
             challengeId: r.challengeId,
             pass: true,
-            reason: "Audio recording submitted (no transcript provided for content verification).",
+            reason: "Audio recording submitted (no STT configured — set sttApiKey to enable speech verification).",
             durationMs: r.durationMs,
             sizeBytes: audioBytes,
             challenge: { ko: challenge.ko, en: challenge.en },
             transcriptMatch: null,
+            sttSource: "none",
           };
-        });
+        }));
 
         const allPassed = results.every((r) => r.pass);
         const hasTranscripts = results.some((r) => r.transcriptMatch !== null);

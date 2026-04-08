@@ -30,6 +30,20 @@
         "type": "number",
         "default": 1500,
         "description": "Minimum recording duration in milliseconds to be considered valid"
+      },
+      "sttEndpoint": {
+        "type": "string",
+        "default": "https://api.openai.com/v1/audio/transcriptions",
+        "description": "Whisper-compatible STT API endpoint for server-side speech transcription"
+      },
+      "sttApiKey": {
+        "type": "string",
+        "description": "API key for the STT endpoint (e.g. OpenAI API key). Required to enable speech content verification."
+      },
+      "sttModel": {
+        "type": "string",
+        "default": "whisper-1",
+        "description": "STT model name (e.g. whisper-1 for OpenAI, or model name for local endpoint)"
       }
     },
     "additionalProperties": false
