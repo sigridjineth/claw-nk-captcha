@@ -360,6 +360,108 @@ export default definePluginEntry({
       },
     });
 
+    // ── Tool: Verify audio from URL (Discord, etc.) ──────────────
+    api.registerTool({
+      name: "nk_captcha_verify_audio_url",
+      description:
+        "Download an audio file from a URL (e.g. Discord attachment), transcribe it via Whisper, " +
+        "and verify the spoken content matches the challenge phrase. " +
+        "Use this when a user uploads a voice recording in Discord/Mattermost/Slack.",
+      parameters: Type.Object({
+        challengeId: Type.String({ description: "The challenge ID to verify against" }),
+        audioUrl: Type.String({ description: "URL of the audio file (Discord attachment URL, etc.)" }),
+      }),
+      async execute(_id, params) {
+        const challenge = CHALLENGES.find((c) => c.id === params.challengeId);
+        if (!challenge) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ status: "FAILED", reason: "Unknown challenge ID" }),
+            }],
+          };
+        }
+
+        // Download audio file
+        let audioBase64: string;
+        let mimeType = "audio/webm";
+        try {
+          const res = await fetch(params.audioUrl);
+          if (!res.ok) {
+            return {
+              content: [{
+                type: "text" as const,
+                text: JSON.stringify({ status: "FAILED", reason: `Failed to download audio: ${res.status} ${res.statusText}` }),
+              }],
+            };
+          }
+          mimeType = res.headers.get("content-type") ?? "audio/ogg";
+          const buffer = await res.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          // Convert to base64
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          audioBase64 = btoa(binary);
+        } catch (err) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ status: "FAILED", reason: `Download error: ${err}` }),
+            }],
+          };
+        }
+
+        const audioBytes = Math.ceil((audioBase64.length * 3) / 4);
+        if (audioBytes < 1000) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ status: "FAILED", reason: `Audio file too small (${audioBytes} bytes)` }),
+            }],
+          };
+        }
+
+        // Transcribe via Whisper
+        const transcript = await transcribeAudio(audioBase64, mimeType);
+        if (!transcript) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                status: "FAILED",
+                reason: sttApiKey
+                  ? "STT transcription returned no text. The audio may be silent or corrupted."
+                  : "No sttApiKey configured. Set sttApiKey in plugin config to enable speech verification.",
+                challenge: { ko: challenge.ko, en: challenge.en },
+              }),
+            }],
+          };
+        }
+
+        // Verify transcript against challenge
+        const verifyResult = verify(params.challengeId, transcript, locale);
+        const pass = verifyResult.pass;
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              status: pass ? "VERIFIED" : "FAILED",
+              verdict: pass
+                ? `✅ Speech verified: "${transcript}" matches challenge (${Math.round(verifyResult.similarity * 100)}% similarity). Not a DPRK operative.`
+                : `🚫 Speech does NOT match: "${transcript}" vs expected "${verifyResult.expected}" (${Math.round(verifyResult.similarity * 100)}% similarity, need 90%+).`,
+              transcript,
+              expected: verifyResult.expected,
+              similarity: verifyResult.similarity,
+              sttSource: "whisper",
+              audioSizeBytes: audioBytes,
+              challenge: { ko: challenge.ko, en: challenge.en },
+            }, null, 2),
+          }],
+        };
+      },
+    });
+
     // ── Tool: List all available challenges ─────────────────────
     api.registerTool(
       {
