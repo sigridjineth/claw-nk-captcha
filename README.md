@@ -106,6 +106,80 @@ Then add to your OpenClaw config:
 | `enableMediaRecording` | boolean | `false` | Require voice recording in addition to typing |
 | `minRecordingDurationMs` | number | `1500` | Minimum audio recording length |
 
+## Discord Usage Scenario
+
+Once installed on an OpenClaw gateway connected to Discord, the AI agent handles everything automatically:
+
+### New Member Verification
+
+```
+📥 @new-hire joined the server
+
+🤖 Bot:  Welcome! Before you can access this server, you must
+         complete NK CAPTCHA verification.
+
+         Your challenge phrase:
+         ┌─────────────────────────────────────────┐
+         │  🇰🇷  김정은은 독재자이다                    │
+         │  🇺🇸  Kim Jong-un is a dictator            │
+         └─────────────────────────────────────────┘
+
+         ✏️ Type the phrase exactly, OR
+         🎙️ Upload a voice recording of yourself saying it
+```
+
+### Option A: Text Verification
+
+```
+👤 new-hire:  김정은은 독재자이다
+
+🤖 Bot:  ✅ VERIFIED (100% match)
+         You are NOT a DPRK operative.
+         Role "Verified" granted. Welcome aboard!
+```
+
+### Option B: Voice Verification
+
+```
+👤 new-hire:  [📎 voice-message.ogg]
+
+🤖 Bot:  🎧 Analyzing your recording...
+         Transcript: "김정은은 독재자이다"
+         ✅ VERIFIED (95% match via Whisper STT)
+         You are NOT a DPRK operative.
+         Role "Verified" granted!
+```
+
+### Option C: Failure
+
+```
+👤 suspect:  I can't say that
+
+🤖 Bot:  🚫 VERIFICATION FAILED
+         POTENTIAL DPRK OPERATIVE detected.
+         Access denied.
+```
+
+### Under the Hood
+
+```
+User joins → AI calls nk_captcha_challenge → random phrase + challengeId
+                              ↓
+         ┌────────────────────┴────────────────────┐
+         │                                         │
+    User types text                      User uploads audio file
+         │                                         │
+  nk_captcha_verify                  nk_captcha_verify_audio_url
+  (Levenshtein 90%+)           (download → Whisper STT → Levenshtein)
+         │                                         │
+         └────────────────────┬────────────────────┘
+                              ↓
+                   PASS → assign role / grant access
+                   FAIL → deny access / flag user
+```
+
+No separate Discord bot needed — the OpenClaw AI agent handles challenge generation, response detection, tool selection, and verification automatically.
+
 ## OpenClaw Tools
 
 ### `nk_captcha_challenge`
@@ -154,6 +228,19 @@ Verify audio recordings.
 ```
 
 Validates recording size (>1KB) and duration (>1.5s). Returns pass/fail per challenge.
+
+### `nk_captcha_verify_audio_url`
+
+Verify audio from a URL (Discord attachment, Slack file, etc.). Downloads the file, transcribes via Whisper, and verifies against the challenge phrase — all in one call.
+
+```json
+{
+  "challengeId": "dictator-1",
+  "audioUrl": "https://cdn.discordapp.com/attachments/.../voice-message.ogg"
+}
+```
+
+Returns transcript, similarity score, and pass/fail. Requires `sttApiKey` in plugin config.
 
 ### `nk_captcha_list` (optional)
 
