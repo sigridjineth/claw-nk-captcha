@@ -161,6 +161,22 @@ List all available challenge phrases. Enable in config:
 
 `GET /nk-captcha` — serves the full interactive verification page through OpenClaw gateway.
 
+## Discord Bot
+
+Discord 서버에 NK CAPTCHA를 통합하세요. 새 멤버가 입장하면 자동으로 챌린지를 보내고, 통과하면 "Verified" 역할을 부여합니다.
+
+```bash
+npm install discord.js
+DISCORD_TOKEN=your-token VERIFIED_ROLE_ID=role-id npx tsx discord-bot.ts
+```
+
+**기능:**
+- `/nk-verify` 슬래시 커맨드
+- 신규 멤버 자동 DM 챌린지
+- 2분 타임아웃
+- 통과 시 역할 자동 부여
+- 실패 시 "POTENTIAL DPRK OPERATIVE" 경고
+
 ## Challenge Phrases (15 total)
 
 | ID | Korean | English | Mode |
