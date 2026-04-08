@@ -1,0 +1,37 @@
+{
+  "id": "nk-captcha",
+  "name": "NK Captcha",
+  "description": "North Korea regime criticism CAPTCHA — verify candidates are not DPRK operatives by asking them to type anti-regime phrases",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "locale": {
+        "type": "string",
+        "enum": ["ko", "en", "both"],
+        "default": "both",
+        "description": "Language for challenge phrases"
+      },
+      "timeoutSeconds": {
+        "type": "number",
+        "default": 60,
+        "description": "Seconds allowed to complete the challenge"
+      },
+      "challengeCount": {
+        "type": "number",
+        "default": 1,
+        "description": "Number of phrases the user must type to pass"
+      },
+      "enableMediaRecording": {
+        "type": "boolean",
+        "default": false,
+        "description": "Require users to record audio of themselves reading the phrase aloud"
+      },
+      "minRecordingDurationMs": {
+        "type": "number",
+        "default": 1500,
+        "description": "Minimum recording duration in milliseconds to be considered valid"
+      }
+    },
+    "additionalProperties": false
+  }
+}
