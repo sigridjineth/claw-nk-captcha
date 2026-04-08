@@ -122,6 +122,7 @@ ${CSS}
           <span class="badge-icon">&#9679;</span>
           <span id="recording-badge-text"></span>
         </div>
+        <div id="stt-transcript" class="stt-transcript" style="display:none"></div>
       </div>
       ` : ''}
     </div>
@@ -144,6 +145,7 @@ ${CSS}
     <div class="result-badge">
       <span class="badge-text">NOT A DPRK OPERATIVE</span>
     </div>
+    <div id="verification-level" class="verification-level" style="display:none"></div>
     <div id="verification-code" class="verification-code"></div>
   </section>
 
@@ -183,6 +185,11 @@ let recordingStartTime = 0;
 let recordingTimerInterval = null;
 let recordedBlob = null;
 let recordingDurationMs = 0;
+
+// Speech recognition state
+let speechRecognition = null;
+let speechTranscript = '';
+let sttSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
 function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -232,6 +239,9 @@ async function startRecording() {
     mediaRecorder.start(100);
     recordingStartTime = Date.now();
 
+    // Start speech recognition alongside recording
+    startSpeechRecognition();
+
     // UI updates
     const btn = document.getElementById('btn-record');
     btn.classList.add('recording');
@@ -242,6 +252,8 @@ async function startRecording() {
 
     document.getElementById('playback-container').style.display = 'none';
     document.getElementById('recording-badge').style.display = 'none';
+    const sttEl = document.getElementById('stt-transcript');
+    if (sttEl) { sttEl.textContent = ''; sttEl.style.display = 'none'; }
 
     recordingTimerInterval = setInterval(() => {
       const elapsed = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
@@ -260,6 +272,7 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
   }
+  stopSpeechRecognition();
   clearInterval(recordingTimerInterval);
 
   const btn = document.getElementById('btn-record');
@@ -291,6 +304,58 @@ function hasValidRecording() {
   return recordedBlob && recordingDurationMs >= MIN_RECORDING_MS;
 }
 
+function startSpeechRecognition() {
+  if (!sttSupported) return;
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  speechRecognition = new SpeechRec();
+  speechRecognition.continuous = true;
+  speechRecognition.interimResults = true;
+  speechRecognition.lang = 'ko-KR';
+  speechTranscript = '';
+
+  speechRecognition.onresult = (event) => {
+    let final = '', interim = '';
+    for (let i = 0; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    speechTranscript = (final + interim).trim();
+    const sttEl = document.getElementById('stt-transcript');
+    if (sttEl && speechTranscript) {
+      sttEl.style.display = 'block';
+      // Check similarity against challenge
+      const simKo = similarity(speechTranscript, currentChallenge.ko);
+      const simEn = similarity(speechTranscript, currentChallenge.en);
+      const bestSim = Math.max(simKo, simEn);
+      const pct = Math.round(bestSim * 100);
+      const cls = pct >= 90 ? 'stt-pass' : pct >= 50 ? 'stt-partial' : 'stt-low';
+      sttEl.innerHTML = '<span class="stt-label">HEARD:</span> <span class="' + cls + '">' +
+        escHtml(speechTranscript) + '</span> <span class="stt-pct">' + pct + '%</span>';
+    }
+    updateSubmitState();
+  };
+
+  speechRecognition.onerror = () => {};
+  speechRecognition.start();
+}
+
+function stopSpeechRecognition() {
+  if (speechRecognition) {
+    try { speechRecognition.stop(); } catch (e) {}
+    speechRecognition = null;
+  }
+}
+
+function getSpeechMatch() {
+  if (!speechTranscript || !currentChallenge) return 0;
+  const simKo = similarity(speechTranscript, currentChallenge.ko);
+  const simEn = similarity(speechTranscript, currentChallenge.en);
+  return Math.max(simKo, simEn);
+}
+
 function updateSubmitState() {
   const input = document.getElementById('user-input').value;
   const targetKo = currentChallenge ? currentChallenge.ko : '';
@@ -301,7 +366,11 @@ function updateSubmitState() {
   const pct = Math.round(bestSim * 100);
 
   const textOk = pct >= 80;
-  const mediaOk = !ENABLE_MEDIA || hasValidRecording();
+  const hasRecording = hasValidRecording();
+  // If STT supported, require 50%+ speech match; otherwise fall back to recording-only
+  const speechMatch = getSpeechMatch();
+  const speechOk = !sttSupported || speechMatch >= 0.5;
+  const mediaOk = !ENABLE_MEDIA || (hasRecording && speechOk);
 
   const btn = document.getElementById('btn-submit');
   if (textOk && mediaOk) btn.classList.remove('disabled');
@@ -408,12 +477,28 @@ function submitChallenge() {
   const input = document.getElementById('user-input').value.trim();
   const simKo = similarity(input, currentChallenge.ko);
   const simEn = similarity(input, currentChallenge.en);
-  const pass = Math.max(simKo, simEn) >= 0.9;
+  const textPass = Math.max(simKo, simEn) >= 0.9;
+
+  // For media mode, also check speech transcript
+  const speechMatch = ENABLE_MEDIA ? getSpeechMatch() : 1;
+  const speechPass = !ENABLE_MEDIA || !sttSupported || speechMatch >= 0.5;
+  const pass = textPass && speechPass;
 
   if (pass) {
     const code = 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' +
                  Math.random().toString(36).substring(2, 8).toUpperCase();
     document.getElementById('verification-code').textContent = code;
+    // Show verification level
+    const levelEl = document.getElementById('verification-level');
+    if (levelEl) {
+      if (ENABLE_MEDIA && sttSupported && speechTranscript) {
+        levelEl.textContent = 'TEXT + VOICE VERIFIED (' + Math.round(speechMatch * 100) + '% speech match)';
+        levelEl.style.display = 'block';
+      } else if (ENABLE_MEDIA) {
+        levelEl.textContent = 'TEXT + RECORDING SUBMITTED (no STT)';
+        levelEl.style.display = 'block';
+      }
+    }
     showScreen('result-pass');
   } else {
     showScreen('result-fail');
@@ -1129,6 +1214,39 @@ body::before {
 }
 
 /* ── Responsive ─────────────────────────────── */
+/* ── STT Transcript ──────────────────────────── */
+.stt-transcript {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  width: 100%;
+}
+.stt-label {
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 0.6rem;
+}
+.stt-pass { color: var(--green); }
+.stt-partial { color: var(--gold); }
+.stt-low { color: var(--red); }
+.stt-pct {
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  margin-left: 8px;
+}
+
+.verification-level {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  color: var(--green);
+  opacity: 0.8;
+}
+
 @media (max-width: 480px) {
   .title { font-size: 2rem; }
   .phrase-ko { font-size: 1.2rem; }

@@ -191,13 +191,14 @@ export default definePluginEntry({
       name: "nk_captcha_media_verify",
       description:
         "Verify the user's audio recording for an NK Captcha media challenge. " +
-        "Checks that a valid recording was submitted with sufficient duration.",
+        "Checks recording validity AND verifies the spoken transcript matches the challenge phrase (90%+ similarity).",
       parameters: Type.Object({
         responses: Type.Array(
           Type.Object({
             challengeId: Type.String({ description: "The challenge ID from nk_captcha_media_challenge" }),
             audioBase64: Type.String({ description: "Base64-encoded audio recording data" }),
             durationMs: Type.Number({ description: "Duration of the recording in milliseconds" }),
+            transcript: Type.Optional(Type.String({ description: "Client-side speech recognition transcript of what the user said" })),
             mimeType: Type.Optional(Type.String({ description: "MIME type of the audio (e.g. audio/webm)" })),
           }),
         ),
@@ -210,6 +211,7 @@ export default definePluginEntry({
               challengeId: r.challengeId,
               pass: false,
               reason: "Unknown challenge ID",
+              transcriptMatch: null,
             };
           }
 
@@ -223,6 +225,7 @@ export default definePluginEntry({
               pass: false,
               reason: `Recording too small (${audioBytes} bytes). Minimum: ${minBytes} bytes.`,
               challenge: { ko: challenge.ko, en: challenge.en },
+              transcriptMatch: null,
             };
           }
 
@@ -232,20 +235,52 @@ export default definePluginEntry({
               pass: false,
               reason: `Recording too short (${r.durationMs}ms). Minimum: ${minRecordingDurationMs}ms.`,
               challenge: { ko: challenge.ko, en: challenge.en },
+              transcriptMatch: null,
             };
           }
 
+          // Verify transcript matches challenge phrase
+          if (r.transcript) {
+            const verifyResult = verify(r.challengeId, r.transcript, locale);
+            if (!verifyResult.pass) {
+              return {
+                challengeId: r.challengeId,
+                pass: false,
+                reason: `Speech transcript does not match challenge phrase (${Math.round(verifyResult.similarity * 100)}% similarity, need 90%+).`,
+                transcript: r.transcript,
+                expected: verifyResult.expected,
+                similarity: verifyResult.similarity,
+                challenge: { ko: challenge.ko, en: challenge.en },
+                transcriptMatch: false,
+              };
+            }
+            return {
+              challengeId: r.challengeId,
+              pass: true,
+              reason: `Speech verified: transcript matches challenge phrase (${Math.round(verifyResult.similarity * 100)}% similarity).`,
+              transcript: r.transcript,
+              similarity: verifyResult.similarity,
+              durationMs: r.durationMs,
+              sizeBytes: audioBytes,
+              challenge: { ko: challenge.ko, en: challenge.en },
+              transcriptMatch: true,
+            };
+          }
+
+          // No transcript provided — pass with warning (fallback to recording-only check)
           return {
             challengeId: r.challengeId,
             pass: true,
-            reason: "Valid audio recording submitted",
+            reason: "Audio recording submitted (no transcript provided for content verification).",
             durationMs: r.durationMs,
             sizeBytes: audioBytes,
             challenge: { ko: challenge.ko, en: challenge.en },
+            transcriptMatch: null,
           };
         });
 
         const allPassed = results.every((r) => r.pass);
+        const hasTranscripts = results.some((r) => r.transcriptMatch !== null);
 
         return {
           content: [
@@ -255,8 +290,11 @@ export default definePluginEntry({
                 {
                   status: allPassed ? "VERIFIED" : "FAILED",
                   verdict: allPassed
-                    ? "✅ User recorded themselves reading anti-regime phrases aloud. Verified not a DPRK operative."
-                    : "🚫 User FAILED media recording verification. Recording was invalid or insufficient.",
+                    ? hasTranscripts
+                      ? "✅ User spoke the anti-regime phrase aloud and transcript was verified. Not a DPRK operative."
+                      : "⚠️ User submitted audio recording but speech content was not verified (no STT). Consider requiring transcript."
+                    : "🚫 User FAILED media recording verification.",
+                  verificationLevel: hasTranscripts ? "transcript-verified" : "recording-only",
                   results,
                   totalChallenges: results.length,
                   passed: results.filter((r) => r.pass).length,
