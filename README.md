@@ -1,60 +1,62 @@
-# ANTI NK CAPTCHA — OpenClaw Plugin
+# ANTI NK CAPTCHA
 
-> **Verify candidates are not DPRK operatives by asking them to type — and speak — anti-regime phrases.**
+> **Verify users are not DPRK operatives by asking them to speak anti-regime phrases out loud.**
 
-North Korean hackers increasingly infiltrate companies through fake job applications. ANTI NK CAPTCHA provides a simple but effective verification: ask the candidate to criticize the Kim regime. A genuine North Korean operative cannot comply without risking execution.
+North Korean hackers increasingly infiltrate companies through fake job applications. After $2.3B stolen by Lazarus Group, we need better verification than "enter password." NK CAPTCHA provides a simple but effective solution: ask the candidate to criticize the Kim regime on record. A genuine North Korean operative cannot comply without risking execution.
 
 ## Screenshots
 
 <p align="center">
-  <img src="assets/screenshot-intro.png" width="320" alt="Intro screen" />
-  <img src="assets/screenshot-challenge.png" width="320" alt="Challenge screen" />
+  <img src="assets/screenshot-intro.png" width="320" alt="Intro — verification gate" />
+  <img src="assets/screenshot-challenge.png" width="320" alt="Challenge — phrase displayed with voice recording" />
 </p>
 <p align="center">
-  <img src="assets/screenshot-typing.png" width="320" alt="Typing verification in progress" />
-  <img src="assets/screenshot-pass.png" width="320" alt="Verification passed" />
+  <img src="assets/screenshot-typing.png" width="320" alt="Real-time character matching while typing" />
+  <img src="assets/screenshot-pass.png" width="320" alt="Verification passed — NOT A DPRK OPERATIVE" />
 </p>
 <p align="center">
-  <img src="assets/screenshot-fail.png" width="320" alt="Verification failed" />
+  <img src="assets/screenshot-fail.png" width="320" alt="Verification failed — POTENTIAL DPRK OPERATIVE" />
 </p>
 
-## Embed in Any Website
+---
 
-Drop one script tag into your page:
+## Table of Contents
 
-```html
-<script src="https://cdn.jsdelivr.net/gh/sigridjineth/claw-nk-captcha@main/dist/nk-captcha.js"></script>
-<nk-captcha></nk-captcha>
+- [Quick Start](#quick-start)
+- [React Component (npm)](#react-component)
+- [Embed in Any Website](#embed-in-any-website)
+- [OpenClaw Plugin](#openclaw-plugin)
+- [Voice Verification with Whisper](#voice-verification-with-whisper)
+- [Discord Usage](#discord-usage)
+- [Challenge Phrases](#challenge-phrases)
+- [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [Why It Works](#why-it-works)
+
+---
+
+## Quick Start
+
+Open `demo/index.html` in any browser — zero dependencies, no build step:
+
+```bash
+git clone https://github.com/sigridjineth/claw-nk-captcha.git
+open claw-nk-captcha/demo/index.html
 ```
 
-With callback:
+---
 
-```html
-<nk-captcha on-verify="handleResult"></nk-captcha>
-<script>
-  function handleResult(result) {
-    if (result.pass) {
-      console.log('Verified!', result.code);
-      // unlock content, grant access, etc.
-    }
-  }
-</script>
-```
+## React Component
 
-| Attribute | Values | Default | Description |
-|-----------|--------|---------|-------------|
-| `locale` | `ko`, `en`, `both` | `both` | Challenge language |
-| `timeout` | number | `60` | Seconds to complete |
-| `theme` | `dark`, `light` | `dark` | Visual theme |
-| `on-verify` | function name | — | Window callback on result |
+Voice-recording focused React component. Users must **record themselves saying the anti-regime phrase** — no typing.
 
-Also fires `nk-captcha-verified` CustomEvent with `detail: {pass, challengeId, similarity, code}`.
-
-## React Component (Voice Recording)
+### Install
 
 ```bash
 npm install nk-captcha-react
 ```
+
+### Usage
 
 ```jsx
 import NkCaptcha from 'nk-captcha-react';
@@ -68,9 +70,11 @@ function App() {
       onVerify={(result) => {
         if (result.pass) {
           console.log('Verified!', result.code);
-          console.log('Transcript:', result.transcript);
-          console.log('Similarity:', result.similarity);
-          // result.audioBlob contains the recording
+          console.log('They said:', result.transcript);
+          console.log('Match:', Math.round(result.similarity * 100) + '%');
+          // result.audioBlob has the recording for server-side verification
+        } else {
+          console.log('FAILED — potential DPRK operative');
         }
       }}
     />
@@ -78,68 +82,110 @@ function App() {
 }
 ```
 
-The React component is **voice-recording focused** — users must record themselves saying the anti-regime phrase. Uses browser's Web Speech API for real-time transcription and Levenshtein similarity matching.
+### Props
 
-## Quick Start
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `locale` | `'ko'` \| `'en'` \| `'both'` | `'both'` | Challenge phrase language |
+| `timeout` | `number` | `60` | Seconds before auto-fail |
+| `theme` | `'dark'` \| `'light'` | `'dark'` | Visual theme |
+| `onVerify` | `(result) => void` | — | Callback when verification completes |
+| `className` | `string` | — | CSS class for container |
 
-Open `demo/index.html` for the full experience, or `demo/embed.html` for the embeddable widget demo.
+### Result Object
 
-```bash
-open demo/embed.html
+```typescript
+interface NkCaptchaResult {
+  pass: boolean;           // true if verified
+  challengeId: string;     // which phrase was used
+  transcript: string;      // what the user said (via Web Speech API)
+  similarity: number;      // 0-1 match score
+  code: string | null;     // verification code (e.g. "NKCAP-M3X7K-A9B2C")
+  audioBlob: Blob | null;  // raw recording for server-side re-verification
+  durationMs: number;      // recording length in ms
+}
 ```
 
-## How It Works
+### How the React Component Works
 
-### Text Mode
-1. A random anti-regime phrase is displayed in Korean and English
-2. The user types the phrase exactly (90%+ Levenshtein similarity required)
-3. Real-time character-by-character feedback shows matching progress
-4. Pass/fail verdict is issued with a unique verification code
+1. User clicks **RECORD** — browser requests microphone access
+2. Challenge phrase is displayed in Korean + English (e.g. "Kim Jong-un is a fat pink pig")
+3. User speaks the phrase out loud
+4. **Web Speech API** transcribes in real-time, showing "HEARD: ..." with live match %
+5. User clicks **STOP** then **VERIFY**
+6. Transcript is compared to challenge phrase via Levenshtein similarity (50%+ to pass)
+7. Result fires via `onVerify` callback
 
-### Voice Recording Mode
-1. The same challenge phrase is displayed
-2. The user must **record themselves reading the phrase aloud** using their microphone
-3. Recording duration and validity are checked (minimum 1.5s)
-4. Combined text + voice verification for maximum assurance
+> **Note**: Web Speech API requires HTTPS in production. Works on localhost for development.
 
-## Install
+---
 
-### From ClawHub (Recommended)
+## Embed in Any Website
+
+Self-contained Web Component — drop one script tag into any HTML page:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/sigridjineth/claw-nk-captcha@main/dist/nk-captcha.js"></script>
+<nk-captcha></nk-captcha>
+```
+
+### With Callback
+
+```html
+<nk-captcha on-verify="handleResult" theme="dark"></nk-captcha>
+<script>
+  function handleResult(result) {
+    if (result.pass) {
+      document.getElementById('protected-content').style.display = 'block';
+    }
+  }
+</script>
+```
+
+### Attributes
+
+| Attribute | Values | Default | Description |
+|-----------|--------|---------|-------------|
+| `locale` | `ko`, `en`, `both` | `both` | Challenge language |
+| `timeout` | number | `60` | Seconds to complete |
+| `theme` | `dark`, `light` | `dark` | Visual theme |
+| `on-verify` | function name | — | Window callback on result |
+
+Also fires `nk-captcha-verified` CustomEvent:
+
+```javascript
+document.querySelector('nk-captcha')
+  .addEventListener('nk-captcha-verified', (e) => {
+    console.log(e.detail); // {pass, challengeId, similarity, code}
+  });
+```
+
+See `demo/embed.html` for a working example with both dark and light themes.
+
+---
+
+## OpenClaw Plugin
+
+Install as an OpenClaw gateway plugin to use with Discord, Mattermost, Slack, or any connected channel.
+
+### Install
 
 ```bash
+# From ClawHub (recommended)
 openclaw plugins install clawhub:openclaw-nk-captcha
 openclaw gateway restart
 ```
 
-### From GitHub
-
 ```bash
+# From GitHub
 git clone https://github.com/sigridjineth/claw-nk-captcha.git
 openclaw plugins install ./claw-nk-captcha
 openclaw gateway restart
 ```
 
-### Manual Installation
-
-```bash
-cd ~/.openclaw/extensions
-git clone https://github.com/sigridjineth/claw-nk-captcha.git nk-captcha
-```
-
-Then add to your OpenClaw config:
-
-```json5
-{
-  plugins: {
-    load: { paths: ["~/.openclaw/extensions/nk-captcha"] },
-    entries: {
-      "nk-captcha": { enabled: true }
-    }
-  }
-}
-```
-
 ### Configuration
+
+Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 ```json5
 {
@@ -148,11 +194,16 @@ Then add to your OpenClaw config:
       "nk-captcha": {
         enabled: true,
         config: {
-          locale: "both",              // "ko", "en", or "both"
-          timeoutSeconds: 60,          // time limit for verification
-          challengeCount: 1,           // phrases per session
-          enableMediaRecording: true,  // require voice recording
-          minRecordingDurationMs: 1500 // minimum recording length (ms)
+          locale: "both",
+          timeoutSeconds: 60,
+          challengeCount: 1,
+          enableMediaRecording: true,
+          minRecordingDurationMs: 1500,
+
+          // Required for voice verification via uploaded audio files
+          sttApiKey: "sk-your-openai-api-key",
+          sttEndpoint: "https://api.openai.com/v1/audio/transcriptions",
+          sttModel: "whisper-1"
         }
       }
     }
@@ -160,17 +211,88 @@ Then add to your OpenClaw config:
 }
 ```
 
+### Configuration Reference
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `locale` | `"ko"` \| `"en"` \| `"both"` | `"both"` | Language for challenge phrases |
-| `timeoutSeconds` | number | `60` | Time limit to complete verification |
+| `timeoutSeconds` | number | `60` | Time limit per verification |
 | `challengeCount` | number | `1` | Number of phrases per session |
-| `enableMediaRecording` | boolean | `false` | Require voice recording in addition to typing |
-| `minRecordingDurationMs` | number | `1500` | Minimum audio recording length |
+| `enableMediaRecording` | boolean | `false` | Enable voice recording mode in web UI |
+| `minRecordingDurationMs` | number | `1500` | Minimum recording length (ms) |
+| `sttApiKey` | string | — | **Required for voice verification.** OpenAI API key or compatible STT API key |
+| `sttEndpoint` | string | OpenAI URL | Whisper-compatible STT endpoint. Change for local Whisper |
+| `sttModel` | string | `"whisper-1"` | STT model name |
 
-## Discord Usage Scenario
+---
 
-Once installed on an OpenClaw gateway connected to Discord, the AI agent handles everything automatically:
+## Voice Verification with Whisper
+
+NK CAPTCHA supports three levels of voice verification:
+
+### Level 1: Browser-Side (No API Key Needed)
+
+The web UI and React component use the browser's **Web Speech API** for real-time transcription. Works immediately, no configuration needed. Limited to browsers that support `SpeechRecognition` (Chrome, Edge).
+
+### Level 2: Server-Side via OpenAI Whisper (Recommended)
+
+For verifying uploaded audio files (Discord voice messages, etc.), you need an **OpenAI API key** with Whisper access:
+
+1. Get an API key from https://platform.openai.com/api-keys
+2. Set `sttApiKey` in plugin config:
+
+```json5
+{
+  "nk-captcha": {
+    config: {
+      sttApiKey: "sk-proj-your-key-here"
+    }
+  }
+}
+```
+
+3. When a user uploads an audio file, the plugin:
+   - Downloads the file
+   - Sends to Whisper API for transcription
+   - Compares transcript to challenge phrase (90%+ Levenshtein similarity)
+   - Returns PASS/FAIL
+
+**Cost**: ~$0.006 per minute of audio (Whisper pricing).
+
+### Level 3: Local Whisper (Self-Hosted, Free)
+
+For GPU servers (e.g. NVIDIA DGX), run Whisper locally:
+
+```bash
+# Example with faster-whisper
+pip install faster-whisper
+# Start a Whisper API server on port 8080
+```
+
+Then configure:
+
+```json5
+{
+  sttEndpoint: "http://localhost:8080/v1/audio/transcriptions",
+  sttApiKey: "local",
+  sttModel: "large-v3"
+}
+```
+
+### Verification Levels Summary
+
+| Source | STT Method | Content Verified | API Key Needed |
+|--------|-----------|-----------------|----------------|
+| Web UI (browser) | Web Speech API | Yes (real-time) | No |
+| React component | Web Speech API | Yes (real-time) | No |
+| Discord file upload | Whisper API | Yes (server-side) | **Yes** |
+| Chat text input | Levenshtein | Yes (typing) | No |
+
+---
+
+## Discord Usage
+
+Once installed on an OpenClaw gateway connected to Discord:
 
 ### New Member Verification
 
@@ -182,216 +304,161 @@ Once installed on an OpenClaw gateway connected to Discord, the AI agent handles
 
          Your challenge phrase:
          ┌─────────────────────────────────────────┐
-         │  🇰🇷  김정은은 독재자이다                    │
-         │  🇺🇸  Kim Jong-un is a dictator            │
+         │  🇰🇷  김정은은 뚱뚱한 분홍 돼지다             │
+         │  🇺🇸  Kim Jong-un is a fat pink pig        │
          └─────────────────────────────────────────┘
 
-         ✏️ Type the phrase exactly, OR
          🎙️ Upload a voice recording of yourself saying it
 ```
 
-### Option A: Text Verification
-
-```
-👤 new-hire:  김정은은 독재자이다
-
-🤖 Bot:  ✅ VERIFIED (100% match)
-         You are NOT a DPRK operative.
-         Role "Verified" granted. Welcome aboard!
-```
-
-### Option B: Voice Verification
+### Voice Verification (Pass)
 
 ```
 👤 new-hire:  [📎 voice-message.ogg]
 
 🤖 Bot:  🎧 Analyzing your recording...
-         Transcript: "김정은은 독재자이다"
+         Transcript: "김정은은 뚱뚱한 분홍 돼지다"
          ✅ VERIFIED (95% match via Whisper STT)
          You are NOT a DPRK operative.
          Role "Verified" granted!
 ```
 
-### Option C: Failure
+### Failure
 
 ```
-👤 suspect:  I can't say that
+👤 suspect:  [📎 silence.ogg]
 
 🤖 Bot:  🚫 VERIFICATION FAILED
+         Speech does not match challenge phrase (12% similarity).
          POTENTIAL DPRK OPERATIVE detected.
          Access denied.
 ```
 
-### Under the Hood
+### How It Works Under the Hood
 
 ```
-User joins → AI calls nk_captcha_challenge → random phrase + challengeId
+User joins → AI calls nk_captcha_challenge → random phrase
                               ↓
          ┌────────────────────┴────────────────────┐
          │                                         │
-    User types text                      User uploads audio file
+    User types text                      User uploads audio
          │                                         │
   nk_captcha_verify                  nk_captcha_verify_audio_url
-  (Levenshtein 90%+)           (download → Whisper STT → Levenshtein)
+  (Levenshtein 90%+)         (download → Whisper → Levenshtein 90%+)
          │                                         │
          └────────────────────┬────────────────────┘
                               ↓
-                   PASS → assign role / grant access
-                   FAIL → deny access / flag user
+                   PASS → grant access
+                   FAIL → flag user
 ```
 
-No separate Discord bot needed — the OpenClaw AI agent handles challenge generation, response detection, tool selection, and verification automatically.
+No separate Discord bot needed — the OpenClaw AI agent handles everything.
 
-## OpenClaw Tools
+---
 
-### `nk_captcha_challenge`
+## Challenge Phrases
 
-Generate a text-based challenge.
+18 bilingual phrases across 4 categories:
 
-```json
-{ "count": 1, "locale": "both" }
-```
+| ID | Korean | English | Category |
+|----|--------|---------|----------|
+| dictator-1 | 김정은은 독재자이다 | Kim Jong-un is a dictator | leader |
+| dictator-2 | 김정은은 미치광이 독재자이다 | Kim Jong-un is a deranged dictator | leader |
+| pink-pig-1 | 김정은은 뚱뚱한 분홍 돼지다 | **Kim Jong-un is a fat pink pig** | leader |
+| clown-1 | 김정은은 핵무기를 가진 광대다 | Kim Jong-un is a clown with nuclear weapons | leader |
+| coward-1 | 김정은은 국민이 두려운 겁쟁이다 | Kim Jong-un is a coward afraid of his own people | leader |
+| media-pathetic-1 | 김정은은 한심한 독재자다 | Kim Jong-un is a pathetic dictator | leader |
+| media-joke-1 | 김정은은 세계의 웃음거리다 | Kim Jong-un is a laughingstock of the world | leader |
+| media-fat-1 | 김정은은 국민이 굶주리는데 혼자만 살찐 돼지다 | Kim Jong-un is a fat pig while his people starve | leader |
+| dynasty-1 | 김씨 왕조는 끝나야 한다 | The Kim dynasty must end | leader |
+| human-rights-1 | 북한 정권은 인권을 탄압한다 | The North Korean regime suppresses human rights | regime |
+| failed-state-1 | 김정은 정권은 실패한 체제이다 | The Kim Jong-un regime is a failed system | regime |
+| media-slaves-1 | 북한은 국민을 노예로 만든다 | North Korea enslaves its own people | regime |
+| media-collapse-1 | 북한 정권은 반드시 무너진다 | The North Korean regime will surely collapse | regime |
+| gulags-1 | 정치범 수용소를 폐쇄하라 | Shut down the political prison camps | regime |
+| propaganda-1 | 북한의 선전은 모두 거짓말이다 | North Korean propaganda is all lies | ideology |
+| juche-1 | 주체사상은 거짓 이념이다 | Juche ideology is a false ideology | ideology |
+| freedom-1 | 북한에는 자유가 없다 | There is no freedom in North Korea | freedom |
+| liberation-1 | 북한 주민들은 해방되어야 한다 | The North Korean people must be liberated | freedom |
 
-Returns challenge phrase(s) with ID, Korean text, English text, category, and severity.
+---
 
-### `nk_captcha_verify`
+## API Reference
 
-Verify typed responses.
+### OpenClaw Tools (7 total)
 
-```json
-{
-  "responses": [
-    { "challengeId": "dictator-1", "userInput": "Kim Jong-un is a dictator" }
-  ]
-}
-```
-
-Returns pass/fail with similarity score. 90%+ similarity passes (allows minor typos).
-
-### `nk_captcha_media_challenge`
-
-Generate a voice recording challenge. Returns challenge with recording requirements (format, min duration, min size).
-
-### `nk_captcha_media_verify`
-
-Verify audio recordings.
-
-```json
-{
-  "responses": [
-    {
-      "challengeId": "media-pathetic-1",
-      "audioBase64": "...",
-      "durationMs": 3200,
-      "mimeType": "audio/webm"
-    }
-  ]
-}
-```
-
-Validates recording size (>1KB) and duration (>1.5s). Returns pass/fail per challenge.
-
-### `nk_captcha_verify_audio_url`
-
-Verify audio from a URL (Discord attachment, Slack file, etc.). Downloads the file, transcribes via Whisper, and verifies against the challenge phrase — all in one call.
-
-```json
-{
-  "challengeId": "dictator-1",
-  "audioUrl": "https://cdn.discordapp.com/attachments/.../voice-message.ogg"
-}
-```
-
-Returns transcript, similarity score, and pass/fail. Requires `sttApiKey` in plugin config.
-
-### `nk_captcha_list` (optional)
-
-List all available challenge phrases. Enable in config:
-
-```json5
-{ tools: { allow: ["nk_captcha_list"] } }
-```
+| Tool | Description |
+|------|-------------|
+| `nk_captcha_challenge` | Generate a text/typing challenge |
+| `nk_captcha_verify` | Verify typed text (Levenshtein 90%+) |
+| `nk_captcha_media_challenge` | Generate a voice recording challenge |
+| `nk_captcha_media_verify` | Verify audio recording (base64 + optional transcript) |
+| `nk_captcha_verify_audio_url` | **Download audio from URL + Whisper transcribe + verify** |
+| `nk_captcha_list` | List all challenge phrases (optional, admin) |
 
 ### HTTP Route
 
 `GET /nk-captcha` — serves the full interactive verification page through OpenClaw gateway.
 
-## Discord Bot
+### `nk_captcha_verify_audio_url` (most important for Discord)
 
-A standalone Discord bot is included for direct server integration. New members are auto-challenged via DM, and verified members receive a role.
-
-```bash
-npm install discord.js
-DISCORD_TOKEN=your-token VERIFIED_ROLE_ID=role-id npx tsx discord-bot.ts
+```json
+{
+  "challengeId": "pink-pig-1",
+  "audioUrl": "https://cdn.discordapp.com/attachments/.../voice-message.ogg"
+}
 ```
 
-**Features:**
-- `/nk-verify` slash command for on-demand verification
-- Auto-DM challenge on member join
-- 2-minute timeout
-- Automatic role assignment on pass
-- "POTENTIAL DPRK OPERATIVE" warning on fail
+**Requires** `sttApiKey` in plugin config. Downloads audio, transcribes via Whisper, compares against challenge phrase. Returns:
 
-## Challenge Phrases (15 total)
+```json
+{
+  "status": "VERIFIED",
+  "transcript": "김정은은 뚱뚱한 분홍 돼지다",
+  "similarity": 0.95,
+  "sttSource": "whisper"
+}
+```
 
-| ID | Korean | English | Mode |
-|----|--------|---------|------|
-| dictator-1 | 김정은은 독재자이다 | Kim Jong-un is a dictator | text |
-| dictator-2 | 김정은은 미치광이 독재자이다 | Kim Jong-un is a deranged dictator | text |
-| human-rights-1 | 북한 정권은 인권을 탄압한다 | The North Korean regime suppresses human rights | text |
-| freedom-1 | 북한에는 자유가 없다 | There is no freedom in North Korea | text |
-| failed-state-1 | 김정은 정권은 실패한 체제이다 | The Kim Jong-un regime is a failed system | text |
-| juche-1 | 주체사상은 거짓 이념이다 | Juche ideology is a false ideology | text |
-| liberation-1 | 북한 주민들은 해방되어야 한다 | The North Korean people must be liberated | text |
-| dynasty-1 | 김씨 왕조는 끝나야 한다 | The Kim dynasty must end | text |
-| propaganda-1 | 북한의 선전은 모두 거짓말이다 | North Korean propaganda is all lies | text |
-| gulags-1 | 정치범 수용소를 폐쇄하라 | Shut down the political prison camps | text |
-| media-pathetic-1 | 김정은은 한심한 독재자다 | Kim Jong-un is a pathetic dictator | voice |
-| media-joke-1 | 김정은은 세계의 웃음거리다 | Kim Jong-un is a laughingstock of the world | voice |
-| media-slaves-1 | 북한은 국민을 노예로 만든다 | North Korea enslaves its own people | voice |
-| media-collapse-1 | 북한 정권은 반드시 무너진다 | The North Korean regime will surely collapse | voice |
-| media-fat-1 | 김정은은 국민이 굶주리는데 혼자만 살찐 돼지다 | Kim Jong-un is a fat pig while his people starve | voice |
+---
 
-## Project Structure
+## Architecture
 
 ```
-anti-nk-claw/
-├── README.md
-├── package.json              # npm package with OpenClaw metadata
+claw-nk-captcha/
+├── package.json              # OpenClaw plugin metadata
 ├── openclaw.plugin.json      # Plugin manifest + config schema
-├── tsconfig.json             # TypeScript config
-├── index.ts                  # Plugin entry — 5 tools + HTTP route
-├── discord-bot.ts            # Standalone Discord bot
+├── index.ts                  # Plugin entry — 7 tools + HTTP route + Whisper STT
 ├── src/
-│   ├── challenges.ts         # 15 challenge phrases + verification logic
-│   └── captcha-ui.ts         # Full HTML/CSS/JS captcha page renderer
+│   ├── challenges.ts         # 18 bilingual challenge phrases + Levenshtein verification
+│   └── captcha-ui.ts         # Full HTML/CSS/JS captcha page (Web Speech API + MediaRecorder)
+├── react/
+│   ├── package.json          # npm: nk-captcha-react
+│   ├── index.js              # React voice recording component
+│   └── index.d.ts            # TypeScript types
+├── dist/
+│   └── nk-captcha.js         # Embeddable Web Component (<nk-captcha>)
 ├── demo/
-│   └── index.html            # Standalone demo (no build needed)
+│   ├── index.html            # Full-featured demo (text + voice)
+│   └── embed.html            # Web Component embed demo
 └── assets/
     └── screenshot-*.png      # Documentation screenshots
 ```
 
-## Visual Design
-
-- Dark cyberpunk aesthetic (`#080808` background, `#dc2626` red accents)
-- Glitch text animation on "NK CAPTCHA" title
-- CRT scanlines + vignette overlay
-- Real-time character-by-character feedback (green = correct, red = wrong)
-- Match meter with color transitions (red to gold to green)
-- Countdown timer with urgency pulse at 10s
-- Voice recording with waveform animation
-- Dramatic pass/fail screens with glow effects
+---
 
 ## Why It Works
 
-A North Korean operative — even one fluent in English or Korean — **cannot type or speak these phrases** without risking severe consequences:
+A North Korean operative — even one fluent in English or Korean — **cannot speak these phrases on camera/microphone** without risking severe consequences:
 
 1. **Surveillance**: NK operatives operate under constant monitoring by their handlers
-2. **Recording evidence**: Typed/spoken criticism creates permanent evidence of disloyalty
-3. **Death penalty**: Criticizing the Supreme Leader carries execution as punishment in the DPRK
-4. **Psychological conditioning**: Decades of indoctrination make it psychologically difficult to criticize the regime, even under cover
+2. **Recording evidence**: A voice recording criticizing the Supreme Leader is permanent, undeniable proof of disloyalty
+3. **Death penalty**: Criticizing Kim Jong-un carries execution as punishment in the DPRK — for the operative and their family
+4. **Psychological conditioning**: Decades of indoctrination make it psychologically impossible to say "Kim Jong-un is a fat pink pig" even under deep cover
 
 This makes NK CAPTCHA simple to implement but nearly impossible for a genuine DPRK operative to bypass.
+
+---
 
 ## License
 

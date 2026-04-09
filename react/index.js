@@ -3,19 +3,19 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 const CHALLENGES = [
   {id:"dictator-1",ko:"김정은은 독재자이다",en:"Kim Jong-un is a dictator"},
   {id:"dictator-2",ko:"김정은은 미치광이 독재자이다",en:"Kim Jong-un is a deranged dictator"},
-  {id:"human-rights-1",ko:"북한 정권은 인권을 탄압한다",en:"The North Korean regime suppresses human rights"},
-  {id:"freedom-1",ko:"북한에는 자유가 없다",en:"There is no freedom in North Korea"},
-  {id:"dynasty-1",ko:"김씨 왕조는 끝나야 한다",en:"The Kim dynasty must end"},
   {id:"pink-pig-1",ko:"김정은은 뚱뚱한 분홍 돼지다",en:"Kim Jong-un is a fat pink pig"},
   {id:"clown-1",ko:"김정은은 핵무기를 가진 광대다",en:"Kim Jong-un is a clown with nuclear weapons"},
   {id:"coward-1",ko:"김정은은 국민이 두려운 겁쟁이다",en:"Kim Jong-un is a coward afraid of his own people"},
   {id:"media-pathetic-1",ko:"김정은은 한심한 독재자다",en:"Kim Jong-un is a pathetic dictator"},
   {id:"media-joke-1",ko:"김정은은 세계의 웃음거리다",en:"Kim Jong-un is a laughingstock of the world"},
   {id:"media-fat-1",ko:"김정은은 국민이 굶주리는데 혼자만 살찐 돼지다",en:"Kim Jong-un is a fat pig while his people starve"},
+  {id:"dynasty-1",ko:"김씨 왕조는 끝나야 한다",en:"The Kim dynasty must end"},
+  {id:"freedom-1",ko:"북한에는 자유가 없다",en:"There is no freedom in North Korea"},
   {id:"gulags-1",ko:"정치범 수용소를 폐쇄하라",en:"Shut down the political prison camps"},
+  {id:"human-rights-1",ko:"북한 정권은 인권을 탄압한다",en:"The North Korean regime suppresses human rights"},
 ];
 
-function levenshtein(a, b) {
+function lev(a, b) {
   const m = Array.from({length: b.length + 1}, (_, i) => [i]);
   for (let j = 0; j <= a.length; j++) m[0][j] = j;
   for (let i = 1; i <= b.length; i++)
@@ -24,131 +24,92 @@ function levenshtein(a, b) {
   return m[b.length][a.length];
 }
 
-function similarity(a, b) {
+function sim(a, b) {
   if (!a || !b) return 0;
   const la = a.toLowerCase(), lb = b.toLowerCase();
   if (la === lb) return 1;
-  const d = levenshtein(la, lb);
+  const d = lev(la, lb);
   return (Math.max(la.length, lb.length) - d) / Math.max(la.length, lb.length);
 }
 
-function pickChallenge() {
-  return CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)];
-}
+function pick() { return CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]; }
 
 function getMime() {
-  if (typeof MediaRecorder !== 'undefined') {
-    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
-    if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
-    if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
-  }
+  if (typeof MediaRecorder === 'undefined') return '';
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+  if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+  if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
   return '';
 }
 
-export default function NkCaptcha({
-  locale = 'both',
-  timeout = 60,
-  theme = 'dark',
-  onVerify,
-  className,
-}) {
-  const [screen, setScreen] = useState('intro'); // intro | recording | pass | fail
-  const [challenge, setChallenge] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(timeout);
+// SVG components
+const MicIcon = ({ size = 24, color = '#fff' }) =>
+  React.createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('path', { d: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z' }),
+    React.createElement('path', { d: 'M19 10v2a7 7 0 0 1-14 0v-2' }),
+    React.createElement('line', { x1: 12, y1: 19, x2: 12, y2: 22 })
+  );
+
+const CheckIcon = ({ size = 24 }) =>
+  React.createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: '#22c55e', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('path', { d: 'M20 6L9 17l-5-5' })
+  );
+
+const XIcon = ({ size = 24 }) =>
+  React.createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: '#dc2626', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+    React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+  );
+
+export default function NkCaptcha({ locale = 'both', timeout = 60, onVerify, className }) {
+  // States: idle | listening | processing | pass | fail
+  const [state, setState] = useState('idle');
+  const [challenge, setChallenge] = useState(() => pick());
   const [transcript, setTranscript] = useState('');
   const [matchPct, setMatchPct] = useState(0);
-  const [audioUrl, setAudioUrl] = useState(null);
-  const [verifyCode, setVerifyCode] = useState('');
 
-  const recorderRef = useRef(null);
+  const recRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const sttRef = useRef(null);
-  const timerRef = useRef(null);
-  const elapsedRef = useRef(null);
+  const startRef = useRef(0);
   const blobRef = useRef(null);
-  const durationRef = useRef(0);
-  const startTimeRef = useRef(0);
+  const durRef = useRef(0);
 
-  const d = theme === 'dark';
-  const c = {
-    bg: d ? '#080808' : '#fafafa',
-    surface: d ? '#111' : '#fff',
-    border: d ? '#2a2a2a' : '#e0e0e0',
-    text: d ? '#e5e5e5' : '#1a1a1a',
-    dim: d ? '#737373' : '#888',
-    red: '#dc2626',
-    green: '#22c55e',
-    gold: '#f59e0b',
-  };
+  const phrase = locale === 'ko' ? challenge.ko : locale === 'en' ? challenge.en : challenge.en;
+  const prompt = 'Say "' + phrase + '"';
 
-  const stopAll = useCallback(() => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    if (sttRef.current) { try { sttRef.current.stop(); } catch(e) {} }
+  const cleanup = useCallback(() => {
+    if (recRef.current?.state === 'recording') recRef.current.stop();
+    if (sttRef.current) try { sttRef.current.stop(); } catch(e) {}
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-    clearInterval(timerRef.current);
-    clearInterval(elapsedRef.current);
   }, []);
 
-  useEffect(() => () => stopAll(), [stopAll]);
+  useEffect(() => () => cleanup(), [cleanup]);
 
-  const start = () => {
-    const ch = pickChallenge();
-    setChallenge(ch);
-    setScreen('recording');
-    setTranscript('');
-    setMatchPct(0);
-    setAudioUrl(null);
-    setIsRecording(false);
-    setElapsed(0);
-    setTimeLeft(timeout);
-    blobRef.current = null;
-    durationRef.current = 0;
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          stopAll();
-          setScreen('fail');
-          onVerify?.({ pass: false, challengeId: ch.id, transcript: '', similarity: 0, code: null, audioBlob: null, durationMs: 0 });
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const startRecording = async () => {
+  const startListening = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
+      setTranscript('');
+      setMatchPct(0);
 
-      const recorder = new MediaRecorder(stream, { mimeType: getMime() });
-      recorderRef.current = recorder;
+      const rec = new MediaRecorder(stream, { mimeType: getMime() });
+      recRef.current = rec;
 
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.onstop = () => {
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
-        durationRef.current = Date.now() - startTimeRef.current;
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        blobRef.current = blob;
-        setAudioUrl(URL.createObjectURL(blob));
-        clearInterval(elapsedRef.current);
+        durRef.current = Date.now() - startRef.current;
+        blobRef.current = new Blob(chunksRef.current, { type: rec.mimeType });
       };
 
-      recorder.start(100);
-      startTimeRef.current = Date.now();
-      setIsRecording(true);
-      setElapsed(0);
+      rec.start(100);
+      startRef.current = Date.now();
+      setState('listening');
 
-      elapsedRef.current = setInterval(() => {
-        setElapsed(((Date.now() - startTimeRef.current) / 1000));
-      }, 100);
-
-      // Start speech recognition
+      // Speech recognition
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SR) {
         const stt = new SR();
@@ -159,165 +120,203 @@ export default function NkCaptcha({
 
         stt.onresult = (event) => {
           let text = '';
-          for (let i = 0; i < event.results.length; i++) {
-            text += event.results[i][0].transcript;
-          }
-          setTranscript(text.trim());
-          // Calculate match
-          const ch = challenge;
-          if (ch && text.trim()) {
-            const best = Math.max(similarity(text.trim(), ch.ko), similarity(text.trim(), ch.en));
+          for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
+          const t = text.trim();
+          setTranscript(t);
+          if (t) {
+            const best = Math.max(sim(t, challenge.ko), sim(t, challenge.en));
             setMatchPct(Math.round(best * 100));
           }
         };
+
+        // Auto-stop after detecting enough match or timeout
+        stt.onend = () => {
+          // Speech ended, finalize
+          if (state === 'listening') finalize();
+        };
+
         stt.start();
+
+        // Auto-stop after timeout
+        setTimeout(() => {
+          if (recRef.current?.state === 'recording') finalize();
+        }, timeout * 1000);
       }
     } catch (err) {
-      console.error('Mic access denied', err);
+      setState('fail');
     }
   };
 
-  const stopRecording = () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    if (sttRef.current) { try { sttRef.current.stop(); } catch(e) {} }
-    setIsRecording(false);
-    clearInterval(elapsedRef.current);
+  const finalize = () => {
+    cleanup();
+    setState('processing');
+
+    // Small delay to let final transcript settle
+    setTimeout(() => {
+      const t = transcript;
+      const best = Math.max(sim(t, challenge.ko), sim(t, challenge.en));
+      const pass = best >= 0.5 && durRef.current >= 1000;
+      const code = pass ? 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2,8).toUpperCase() : null;
+
+      setState(pass ? 'pass' : 'fail');
+      onVerify?.({ pass, challengeId: challenge.id, transcript: t, similarity: best, code, audioBlob: blobRef.current, durationMs: durRef.current });
+    }, 500);
   };
 
-  const submit = () => {
-    clearInterval(timerRef.current);
-    const ch = challenge;
-    const best = Math.max(similarity(transcript, ch.ko), similarity(transcript, ch.en));
-    const pass = best >= 0.5 && durationRef.current >= 1500;
-    const code = pass ? 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2,8).toUpperCase() : null;
-
-    setVerifyCode(code || '');
-    setScreen(pass ? 'pass' : 'fail');
-    onVerify?.({ pass, challengeId: ch.id, transcript, similarity: best, code, audioBlob: blobRef.current, durationMs: durationRef.current });
+  const retry = () => {
+    cleanup();
+    setChallenge(pick());
+    setTranscript('');
+    setMatchPct(0);
+    setState('idle');
   };
 
-  const retry = () => { stopAll(); setScreen('intro'); };
+  const handleClick = () => {
+    if (state === 'idle') startListening();
+    else if (state === 'listening') finalize();
+    else if (state === 'fail') retry();
+  };
 
-  const canSubmit = audioUrl && !isRecording && durationRef.current >= 1500;
+  // Styles
+  const container = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    padding: '14px 20px 14px 14px',
+    background: '#fff',
+    borderRadius: 12,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(255,255,255,0.8)',
+    fontFamily: "-apple-system, 'Helvetica Neue', Arial, sans-serif",
+    maxWidth: 520,
+    minHeight: 56,
+    cursor: state === 'processing' ? 'wait' : 'default',
+    transition: 'box-shadow 0.3s',
+    position: 'relative',
+    overflow: 'hidden',
+  };
 
-  const mono = "'Courier New', monospace";
+  const micBtn = {
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'all 0.3s',
+    background: state === 'listening' ? '#dc2626' : state === 'pass' ? '#22c55e' : state === 'fail' ? '#dc2626' : '#dc2626',
+    boxShadow: state === 'listening' ? '0 0 0 4px rgba(220,38,38,0.2), 0 0 20px rgba(220,38,38,0.3)' : 'none',
+    animation: state === 'listening' ? 'nk-pulse 1.5s ease-in-out infinite' : 'none',
+  };
 
-  return React.createElement('div', {
-    className,
-    style: { background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8, maxWidth: 480, overflow: 'hidden', fontFamily: "-apple-system, 'Noto Sans KR', sans-serif" }
-  },
-    // Header
-    React.createElement('div', {
-      style: { background: c.red, color: '#fff', padding: '12px 20px', fontFamily: mono, fontSize: 13, fontWeight: 700, letterSpacing: '0.15em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
-    }, 'NK CAPTCHA', React.createElement('span', { style: { fontSize: 10, opacity: 0.7, letterSpacing: '0.2em' } }, 'VOICE VERIFY')),
+  const phraseStyle = {
+    flex: 1,
+    fontSize: state === 'listening' && transcript ? 14 : 17,
+    fontWeight: 500,
+    color: '#1a1a1a',
+    lineHeight: 1.4,
+    minWidth: 0,
+  };
 
-    // Timer bar
-    screen === 'recording' && React.createElement('div', { style: { height: 2, background: c.border } },
-      React.createElement('div', { style: { height: '100%', width: `${(timeLeft / timeout) * 100}%`, background: c.red, transition: 'width 1s linear' } })
-    ),
+  const brandStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    gap: 2,
+  };
 
-    // Body
-    React.createElement('div', { style: { padding: '24px 20px' } },
+  // Inject keyframes
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const id = 'nk-captcha-keyframes';
+    if (!document.getElementById(id)) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `
+        @keyframes nk-pulse {
+          0%, 100% { box-shadow: 0 0 0 4px rgba(220,38,38,0.15), 0 0 12px rgba(220,38,38,0.2); }
+          50% { box-shadow: 0 0 0 8px rgba(220,38,38,0.1), 0 0 24px rgba(220,38,38,0.35); }
+        }
+        @keyframes nk-progress {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
-      // INTRO
-      screen === 'intro' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
-        React.createElement('div', { style: { fontSize: 48 } }, '\uD83C\uDFA4'),
-        React.createElement('p', { style: { fontSize: 14, color: c.dim, textAlign: 'center', lineHeight: 1.6 } },
-          'Verify you are ', React.createElement('strong', { style: { color: c.text } }, 'not'), ' a DPRK operative.', React.createElement('br'),
-          'Record yourself saying an anti-regime phrase.'
-        ),
-        React.createElement('button', {
-          onClick: start,
-          style: { background: 'transparent', border: `1.5px solid ${c.red}`, color: c.red, fontFamily: mono, fontSize: 13, fontWeight: 600, letterSpacing: '0.12em', padding: '12px 36px', cursor: 'pointer', borderRadius: 3 }
-        }, 'BEGIN VERIFICATION')
-      ),
+  // Progress bar for listening
+  const progressBar = state === 'listening' ? React.createElement('div', {
+    style: {
+      position: 'absolute', bottom: 0, left: 0, height: 3,
+      background: 'linear-gradient(90deg, #dc2626, #f59e0b, #22c55e)',
+      animation: `nk-progress ${timeout}s linear forwards`,
+      borderRadius: '0 0 12px 12px',
+    }
+  }) : null;
 
-      // RECORDING
-      screen === 'recording' && challenge && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-        // Timer
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontFamily: mono, fontSize: 11, color: timeLeft <= 10 ? c.red : c.dim } },
-          React.createElement('span', null, 'VERIFICATION IN PROGRESS'),
-          React.createElement('span', { style: { fontWeight: 700 } }, `${timeLeft}s`)
-        ),
-
-        // Challenge phrase
-        React.createElement('div', { style: { background: c.surface, border: `1px solid ${c.border}`, padding: 16, textAlign: 'center', borderRadius: 4 } },
-          React.createElement('div', { style: { fontSize: 11, fontFamily: mono, letterSpacing: '0.15em', color: c.red, marginBottom: 8, opacity: 0.7 } }, 'SAY THIS OUT LOUD'),
-          React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 900, color: c.text, lineHeight: 1.4 } }, challenge.ko),
-          React.createElement('div', { style: { fontSize: '0.8rem', color: c.dim, marginTop: 6, fontStyle: 'italic' } }, challenge.en)
-        ),
-
-        // Record button
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center' } },
-          React.createElement('button', {
-            onClick: isRecording ? stopRecording : startRecording,
-            style: {
-              background: isRecording ? c.red + '22' : 'transparent',
-              border: `2px solid ${isRecording ? c.red : c.border}`,
-              color: isRecording ? c.red : c.dim,
-              fontFamily: mono, fontSize: 13, fontWeight: 700, letterSpacing: '0.1em',
-              padding: '14px 28px', cursor: 'pointer', borderRadius: 4,
-              boxShadow: isRecording ? `0 0 25px ${c.red}44` : 'none',
-              transition: 'all 0.3s', display: 'flex', alignItems: 'center', gap: 10,
-            }
-          },
-            React.createElement('span', { style: { width: 10, height: 10, borderRadius: '50%', background: isRecording ? c.red : c.dim, display: 'inline-block', animation: isRecording ? 'none' : 'none' } }),
-            isRecording ? 'STOP' : 'RECORD'
+  // Text content
+  let textContent;
+  if (state === 'idle') {
+    textContent = prompt;
+  } else if (state === 'listening') {
+    textContent = transcript
+      ? React.createElement('span', null,
+          React.createElement('span', { style: { color: matchPct >= 80 ? '#22c55e' : matchPct >= 40 ? '#f59e0b' : '#888', fontSize: 15 } },
+            '"' + transcript + '"'
           ),
-          React.createElement('span', { style: { fontFamily: mono, fontSize: 14, fontWeight: 600, color: c.dim, minWidth: 50 } }, `${elapsed.toFixed(1)}s`)
+          React.createElement('span', { style: { color: '#aaa', fontSize: 12, marginLeft: 8 } }, matchPct + '%')
+        )
+      : React.createElement('span', { style: { color: '#888' } }, 'Listening...');
+  } else if (state === 'processing') {
+    textContent = React.createElement('span', { style: { color: '#888' } }, 'Verifying...');
+  } else if (state === 'pass') {
+    textContent = React.createElement('span', { style: { color: '#22c55e', fontWeight: 600 } }, 'Verified \u2014 Not a DPRK operative');
+  } else {
+    textContent = React.createElement('span', null,
+      React.createElement('span', { style: { color: '#dc2626', fontWeight: 600 } }, 'Failed'),
+      React.createElement('span', { style: { color: '#888', fontSize: 13, marginLeft: 8 } }, 'tap to retry')
+    );
+  }
+
+  // Mic icon content
+  let micContent;
+  if (state === 'pass') micContent = React.createElement(CheckIcon, { size: 22 });
+  else if (state === 'fail') micContent = React.createElement(XIcon, { size: 22 });
+  else micContent = React.createElement(MicIcon, { size: 20 });
+
+  return React.createElement('div', { className, style: container, onClick: state === 'fail' ? retry : undefined },
+    // Progress bar
+    progressBar,
+
+    // Mic button
+    React.createElement('button', {
+      onClick: handleClick,
+      style: micBtn,
+      'aria-label': state === 'idle' ? 'Start recording' : state === 'listening' ? 'Stop recording' : 'Retry',
+    }, micContent),
+
+    // Phrase / status text
+    React.createElement('div', { style: phraseStyle }, textContent),
+
+    // Brand
+    React.createElement('div', { style: brandStyle },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+        React.createElement('svg', { width: 20, height: 14, viewBox: '0 0 24 16', fill: 'none' },
+          React.createElement('path', { d: 'M4 8C4 4 8 1 12 1s8 3 8 7-4 7-8 7S4 12 4 8Z', fill: '#f97316', opacity: 0.9 }),
+          React.createElement('path', { d: 'M8 8c0-2.5 2-4.5 4.5-4.5S17 5.5 17 8s-2 4-4.5 4S8 10.5 8 8Z', fill: '#fb923c', opacity: 0.7 }),
+          React.createElement('path', { d: 'M0 10c0-3 3-5.5 6-5.5', stroke: '#f97316', strokeWidth: 1.5, fill: 'none' }),
         ),
-
-        // Playback
-        audioUrl && !isRecording && React.createElement('audio', { src: audioUrl, controls: true, style: { width: '100%', height: 36 } }),
-
-        // Transcript display
-        transcript && React.createElement('div', { style: { background: c.surface, border: `1px solid ${c.border}`, padding: 12, borderRadius: 4, fontFamily: mono, fontSize: 12 } },
-          React.createElement('span', { style: { color: c.gold, fontSize: 10, letterSpacing: '0.1em', fontWeight: 600 } }, 'HEARD: '),
-          React.createElement('span', { style: { color: matchPct >= 90 ? c.green : matchPct >= 50 ? c.gold : c.red } }, transcript),
-          React.createElement('span', { style: { color: c.dim, marginLeft: 8, fontSize: 11 } }, `${matchPct}%`)
-        ),
-
-        // Match bar
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-          React.createElement('span', { style: { fontFamily: mono, fontSize: 10, letterSpacing: '0.1em', color: c.dim } }, 'MATCH'),
-          React.createElement('div', { style: { flex: 1, height: 4, background: c.border, borderRadius: 2, overflow: 'hidden' } },
-            React.createElement('div', { style: { height: '100%', width: `${matchPct}%`, background: matchPct >= 90 ? c.green : matchPct >= 50 ? c.gold : c.red, transition: 'width 0.3s, background 0.3s', borderRadius: 2 } })
-          ),
-          React.createElement('span', { style: { fontFamily: mono, fontSize: 12, fontWeight: 600, color: c.dim, minWidth: 32, textAlign: 'right' } }, `${matchPct}%`)
-        ),
-
-        // Submit
-        React.createElement('button', {
-          onClick: submit,
-          disabled: !canSubmit,
-          style: {
-            background: 'transparent', border: `1.5px solid ${c.red}`, color: c.red,
-            fontFamily: mono, fontSize: 13, fontWeight: 600, letterSpacing: '0.12em',
-            padding: '12px 36px', cursor: canSubmit ? 'pointer' : 'default', borderRadius: 3,
-            opacity: canSubmit ? 1 : 0.25, alignSelf: 'center',
-          }
-        }, 'VERIFY')
+        React.createElement('span', { style: { fontSize: 13, fontWeight: 700, color: '#333', letterSpacing: '-0.02em' } }, 'NKCaptcha')
       ),
-
-      // PASS
-      screen === 'pass' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
-        React.createElement('div', { style: { fontSize: 56 } }, '\u2705'),
-        React.createElement('div', { style: { fontFamily: mono, fontSize: '1.6rem', fontWeight: 800, letterSpacing: '0.15em', color: c.green } }, 'VERIFIED'),
-        React.createElement('p', { style: { fontSize: 13, color: c.dim, textAlign: 'center' } }, 'Speech verified — Not a DPRK Operative'),
-        React.createElement('div', { style: { border: `1px solid ${c.green}`, padding: '6px 18px', fontFamily: mono, fontSize: 11, letterSpacing: '0.15em', fontWeight: 600, color: c.green, borderRadius: 2 } }, 'NOT A DPRK OPERATIVE'),
-        verifyCode && React.createElement('div', { style: { fontFamily: mono, fontSize: 11, color: c.dim, padding: '6px 12px', background: c.surface, border: `1px solid ${c.border}`, borderRadius: 2 } }, verifyCode)
-      ),
-
-      // FAIL
-      screen === 'fail' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
-        React.createElement('div', { style: { fontSize: 56 } }, '\uD83D\uDEAB'),
-        React.createElement('div', { style: { fontFamily: mono, fontSize: '1.6rem', fontWeight: 800, letterSpacing: '0.15em', color: c.red } }, 'FAILED'),
-        React.createElement('p', { style: { fontSize: 13, color: c.dim, textAlign: 'center' } }, 'Could not verify identity'),
-        React.createElement('div', { style: { border: `1px solid ${c.red}`, padding: '6px 18px', fontFamily: mono, fontSize: 11, letterSpacing: '0.15em', fontWeight: 600, color: c.red, borderRadius: 2 } }, 'POTENTIAL DPRK OPERATIVE'),
-        React.createElement('button', {
-          onClick: retry,
-          style: { background: 'transparent', border: `1px solid ${c.border}`, color: c.dim, fontFamily: mono, fontSize: 11, letterSpacing: '0.1em', padding: '8px 24px', cursor: 'pointer', borderRadius: 3 }
-        }, 'RETRY')
+      React.createElement('div', { style: { display: 'flex', gap: 8, fontSize: 10, color: '#aaa' } },
+        React.createElement('span', { style: { textDecoration: 'underline', cursor: 'pointer' } }, 'Privacy'),
+        React.createElement('span', null, '\u00B7'),
+        React.createElement('span', { style: { textDecoration: 'underline', cursor: 'pointer' } }, 'Terms')
       )
     )
   );
