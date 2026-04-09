@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NK CAPTCHA — Image Puzzle Mode</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&display=swap');
+
+:root {
+  --bg: #080808;
+  --surface: #111;
+  --border: #2a2a2a;
+  --red: #dc2626;
+  --green: #22c55e;
+  --gold: #f59e0b;
+  --text: #e5e5e5;
+  --dim: #737373;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  max-width: 480px;
+  width: 92vw;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--red);
+}
+.subtitle {
+  font-size: 0.65rem;
+  letter-spacing: 0.3em;
+  color: var(--dim);
+  margin-top: 6px;
+}
+
+.screen { display: none; flex-direction: column; align-items: center; gap: 20px; }
+.screen.active { display: flex; }
+
+/* Puzzle */
+.puzzle-instruction {
+  font-size: 0.75rem;
+  color: var(--dim);
+  text-align: center;
+  line-height: 1.6;
+}
+.puzzle-instruction strong { color: var(--red); }
+
+.image-select {
+  display: flex;
+  gap: 12px;
+}
+.img-option {
+  width: 100px;
+  height: 100px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s;
+  opacity: 0.6;
+}
+.img-option:hover { opacity: 1; border-color: var(--dim); }
+.img-option.selected { border-color: var(--red); opacity: 1; box-shadow: 0 0 20px rgba(220,38,38,0.3); }
+.img-option img { width: 100%; height: 100%; object-fit: cover; }
+
+.puzzle-grid {
+  display: grid;
+  gap: 3px;
+  background: var(--border);
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  padding: 3px;
+  touch-action: none;
+}
+.puzzle-grid.grid-3 { grid-template-columns: repeat(3, 1fr); width: 306px; height: 306px; }
+.puzzle-grid.grid-4 { grid-template-columns: repeat(4, 1fr); width: 308px; height: 308px; }
+
+.puzzle-piece {
+  background-size: cover;
+  background-position: center;
+  cursor: grab;
+  border-radius: 2px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.puzzle-piece:hover { transform: scale(1.03); z-index: 2; }
+.puzzle-piece.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+.puzzle-piece.drag-over {
+  box-shadow: 0 0 0 2px var(--red), 0 0 15px rgba(220,38,38,0.4);
+}
+.puzzle-piece.empty {
+  background: var(--bg) !important;
+  cursor: default;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+.moves { color: var(--gold); }
+.timer-display { color: var(--text); }
+
+.btn {
+  background: transparent;
+  border: 1.5px solid var(--red);
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 12px 36px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+.btn:hover { background: rgba(220,38,38,0.1); box-shadow: 0 0 20px rgba(220,38,38,0.2); }
+.btn-sm {
+  border-color: var(--border);
+  color: var(--dim);
+  padding: 8px 20px;
+  font-size: 0.7rem;
+}
+
+.difficulty {
+  display: flex;
+  gap: 8px;
+}
+.diff-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+.diff-btn.active { border-color: var(--red); color: var(--red); }
+
+.result-icon { font-size: 56px; }
+.result-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+.pass-title { color: var(--green); }
+.fail-title { color: var(--red); }
+.result-sub { font-size: 0.8rem; color: var(--dim); text-align: center; }
+.badge {
+  border: 1px solid var(--green);
+  padding: 6px 18px;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: var(--green);
+}
+.badge-fail { border-color: var(--red); color: var(--red); }
+.code {
+  font-size: 0.7rem;
+  color: var(--dim);
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.preview-container {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.preview-label {
+  font-size: 0.6rem;
+  color: var(--dim);
+  letter-spacing: 0.15em;
+}
+.preview-img {
+  width: 80px;
+  height: 80px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  object-fit: cover;
+  opacity: 0.3;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="title">NK CAPTCHA</div>
+    <div class="subtitle">IMAGE PUZZLE VERIFICATION</div>
+  </div>
+
+  <!-- INTRO -->
+  <div class="screen active" id="s-intro">
+    <p class="puzzle-instruction">
+      Reassemble the <strong>scrambled image of Kim Jong-un</strong> to prove you are not a DPRK operative.<br>
+      A loyal operative would never desecrate the Supreme Leader's image.
+    </p>
+
+    <p class="puzzle-instruction">Choose an image:</p>
+    <div class="image-select">
+      <div class="img-option selected" data-img="photo" id="opt-photo">
+        <img src="../assets/kim-photo.png" alt="Kim photo">
+      </div>
+      <div class="img-option" data-img="mickey" id="opt-mickey">
+        <img src="../assets/kim-mickey.png" alt="Kim mickey">
+      </div>
+    </div>
+
+    <p class="puzzle-instruction">Difficulty:</p>
+    <div class="difficulty">
+      <button class="diff-btn active" data-size="3" onclick="setDiff(3,this)">3x3</button>
+      <button class="diff-btn" data-size="4" onclick="setDiff(4,this)">4x4</button>
+    </div>
+
+    <button class="btn" onclick="startPuzzle()">SCRAMBLE & SOLVE</button>
+  </div>
+
+  <!-- PUZZLE -->
+  <div class="screen" id="s-puzzle">
+    <div class="status-bar">
+      <span>MOVES: <span class="moves" id="move-count">0</span></span>
+      <span class="timer-display" id="timer">60s</span>
+    </div>
+    <div class="puzzle-grid" id="grid"></div>
+    <div class="preview-container">
+      <span class="preview-label">REFERENCE</span>
+      <img class="preview-img" id="preview" src="../assets/kim-photo.png">
+    </div>
+  </div>
+
+  <!-- PASS -->
+  <div class="screen" id="s-pass">
+    <div class="result-icon">&#x2705;</div>
+    <div class="result-title pass-title">VERIFIED</div>
+    <div class="result-sub">You desecrated the Supreme Leader's image.<br>Not a DPRK operative.</div>
+    <div class="badge">NOT A DPRK OPERATIVE</div>
+    <div class="code" id="v-code"></div>
+    <button class="btn-sm btn" onclick="location.reload()">PLAY AGAIN</button>
+  </div>
+
+  <!-- FAIL -->
+  <div class="screen" id="s-fail">
+    <div class="result-icon">&#x1F6AB;</div>
+    <div class="result-title fail-title">FAILED</div>
+    <div class="result-sub">Time ran out. Could not verify identity.</div>
+    <div class="badge badge-fail">POTENTIAL DPRK OPERATIVE</div>
+    <button class="btn-sm btn" onclick="location.reload()">RETRY</button>
+  </div>
+</div>
+
+<script>
+let gridSize = 3;
+let selectedImg = 'photo';
+let pieces = [];
+let moves = 0;
+let timerInterval = null;
+let timeLeft = 60;
+let dragSrc = null;
+
+const IMAGES = {
+  photo: '../assets/kim-photo.png',
+  mickey: '../assets/kim-mickey.png',
+};
+
+// Image selection
+document.querySelectorAll('.img-option').forEach(opt => {
+  opt.onclick = () => {
+    document.querySelectorAll('.img-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedImg = opt.dataset.img;
+  };
+});
+
+function setDiff(size, btn) {
+  gridSize = size;
+  document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function startPuzzle() {
+  const imgSrc = IMAGES[selectedImg];
+  document.getElementById('preview').src = imgSrc;
+
+  const grid = document.getElementById('grid');
+  grid.className = 'puzzle-grid grid-' + gridSize;
+  grid.innerHTML = '';
+
+  const total = gridSize * gridSize;
+  const pieceSize = gridSize === 3 ? 100 : 75;
+
+  // Create ordered pieces
+  pieces = Array.from({length: total}, (_, i) => i);
+
+  // Shuffle (ensure solvable — do even number of swaps)
+  for (let i = total - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+  }
+
+  // Preload image, then render
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    renderGrid(img, pieceSize);
+  };
+  img.src = imgSrc;
+
+  moves = 0;
+  document.getElementById('move-count').textContent = '0';
+  timeLeft = gridSize === 3 ? 60 : 90;
+  document.getElementById('timer').textContent = timeLeft + 's';
+
+  show('s-puzzle');
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    document.getElementById('timer').textContent = timeLeft + 's';
+    if (timeLeft <= 10) document.getElementById('timer').style.color = '#dc2626';
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      show('s-fail');
+    }
+  }, 1000);
+}
+
+function renderGrid(img, pieceSize) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  // Draw image to canvas for slicing
+  const canvas = document.createElement('canvas');
+  const size = Math.min(img.naturalWidth, img.naturalHeight);
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  // Center crop
+  const sx = (img.naturalWidth - size) / 2;
+  const sy = (img.naturalHeight - size) / 2;
+  ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+
+  const sliceSize = size / gridSize;
+
+  pieces.forEach((pieceIdx, pos) => {
+    const row = Math.floor(pieceIdx / gridSize);
+    const col = pieceIdx % gridSize;
+
+    // Create piece canvas
+    const pc = document.createElement('canvas');
+    pc.width = pieceSize;
+    pc.height = pieceSize;
+    const pctx = pc.getContext('2d');
+    pctx.drawImage(canvas, col * sliceSize, row * sliceSize, sliceSize, sliceSize, 0, 0, pieceSize, pieceSize);
+
+    // Draw piece number for debug (subtle)
+    pctx.fillStyle = 'rgba(255,255,255,0.15)';
+    pctx.font = '10px monospace';
+    pctx.fillText(pieceIdx + 1, 4, 12);
+
+    const div = document.createElement('div');
+    div.className = 'puzzle-piece';
+    div.style.width = pieceSize + 'px';
+    div.style.height = pieceSize + 'px';
+    div.style.backgroundImage = 'url(' + pc.toDataURL() + ')';
+    div.style.backgroundSize = 'cover';
+    div.dataset.pos = pos;
+    div.dataset.piece = pieceIdx;
+    div.draggable = true;
+
+    // Drag events
+    div.addEventListener('dragstart', onDragStart);
+    div.addEventListener('dragover', onDragOver);
+    div.addEventListener('dragenter', onDragEnter);
+    div.addEventListener('dragleave', onDragLeave);
+    div.addEventListener('drop', onDrop);
+    div.addEventListener('dragend', onDragEnd);
+
+    // Touch support
+    div.addEventListener('touchstart', onTouchStart, {passive: false});
+    div.addEventListener('touchmove', onTouchMove, {passive: false});
+    div.addEventListener('touchend', onTouchEnd);
+
+    grid.appendChild(div);
+  });
+}
+
+function onDragStart(e) {
+  dragSrc = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.pos);
+}
+
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function onDragEnter(e) { e.preventDefault(); this.classList.add('drag-over'); }
+function onDragLeave() { this.classList.remove('drag-over'); }
+
+function onDrop(e) {
+  e.preventDefault();
+  this.classList.remove('drag-over');
+  if (dragSrc === this) return;
+  swapPieces(dragSrc, this);
+}
+
+function onDragEnd() {
+  document.querySelectorAll('.puzzle-piece').forEach(p => {
+    p.classList.remove('dragging', 'drag-over');
+  });
+}
+
+// Touch support
+let touchPiece = null;
+function onTouchStart(e) {
+  e.preventDefault();
+  touchPiece = this;
+  this.classList.add('dragging');
+}
+function onTouchMove(e) {
+  e.preventDefault();
+}
+function onTouchEnd(e) {
+  if (!touchPiece) return;
+  touchPiece.classList.remove('dragging');
+  const touch = e.changedTouches[0];
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (target && target.classList.contains('puzzle-piece') && target !== touchPiece) {
+    swapPieces(touchPiece, target);
+  }
+  touchPiece = null;
+}
+
+function swapPieces(a, b) {
+  // Swap background images
+  const tmpBg = a.style.backgroundImage;
+  a.style.backgroundImage = b.style.backgroundImage;
+  b.style.backgroundImage = tmpBg;
+
+  // Swap piece data
+  const tmpPiece = a.dataset.piece;
+  a.dataset.piece = b.dataset.piece;
+  b.dataset.piece = tmpPiece;
+
+  moves++;
+  document.getElementById('move-count').textContent = moves;
+
+  checkWin();
+}
+
+function checkWin() {
+  const allPieces = document.querySelectorAll('.puzzle-piece');
+  let solved = true;
+  allPieces.forEach((p, i) => {
+    if (parseInt(p.dataset.piece) !== i) solved = false;
+  });
+
+  if (solved) {
+    clearInterval(timerInterval);
+    const code = 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2,8).toUpperCase();
+    document.getElementById('v-code').textContent = code;
+
+    // Small delay for satisfaction
+    setTimeout(() => show('s-pass'), 500);
+  }
+}
+</script>
+</body>
+</html>

@@ -495,6 +495,101 @@ export default definePluginEntry({
       { optional: true },
     );
 
+    // ── Verification session store (in-memory) ───────────────────
+    const sessions = new Map<string, {
+      challengeId: string;
+      callbackUrl?: string;
+      userId?: string;
+      status: "pending" | "verified" | "failed";
+      createdAt: number;
+      expiresAt: number;
+    }>();
+
+    // Cleanup expired sessions every 5 minutes
+    setInterval(() => {
+      const now = Date.now();
+      for (const [id, s] of sessions) {
+        if (now > s.expiresAt) sessions.delete(id);
+      }
+    }, 300_000);
+
+    // ── Tool: Create a verification URL ─────────────────────────
+    api.registerTool({
+      name: "nk_captcha_create_session",
+      description:
+        "Create a verification session and return a URL the user can visit to complete NK CAPTCHA. " +
+        "When verification completes, the result is POSTed to the callbackUrl. " +
+        "Use this in Discord/Slack: send the user the verification URL, then poll or wait for the callback.",
+      parameters: Type.Object({
+        callbackUrl: Type.Optional(Type.String({ description: "URL to POST the verification result to (webhook)" })),
+        userId: Type.Optional(Type.String({ description: "User identifier (e.g. Discord user ID) for tracking" })),
+        mode: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("voice"), Type.Literal("puzzle")], {
+          description: "Verification mode (default: text)",
+        })),
+      }),
+      async execute(_id, params) {
+        const challenge = pickRandom(1)[0];
+        const sessionId = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        const expiresAt = Date.now() + (config.timeoutSeconds ?? 60) * 1000;
+
+        sessions.set(sessionId, {
+          challengeId: challenge.id,
+          callbackUrl: params.callbackUrl,
+          userId: params.userId,
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt,
+        });
+
+        const mode = params.mode ?? "text";
+        const verifyUrl = `/nk-captcha/verify?session=${sessionId}&mode=${mode}`;
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "session_created",
+              sessionId,
+              verifyUrl,
+              instruction: "Send this URL to the user. When they complete verification, the result will be POSTed to the callbackUrl (if provided). You can also check status via nk_captcha_check_session.",
+              challenge: { id: challenge.id, ko: challenge.ko, en: challenge.en },
+              expiresAt: new Date(expiresAt).toISOString(),
+              mode,
+            }, null, 2),
+          }],
+        };
+      },
+    });
+
+    // ── Tool: Check session status ──────────────────────────────
+    api.registerTool({
+      name: "nk_captcha_check_session",
+      description: "Check the status of a verification session (pending/verified/failed).",
+      parameters: Type.Object({
+        sessionId: Type.String({ description: "The session ID from nk_captcha_create_session" }),
+      }),
+      async execute(_id, params) {
+        const session = sessions.get(params.sessionId);
+        if (!session) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ status: "not_found", reason: "Session expired or does not exist" }) }] };
+        }
+        if (Date.now() > session.expiresAt && session.status === "pending") {
+          session.status = "failed";
+        }
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              sessionId: params.sessionId,
+              status: session.status,
+              userId: session.userId,
+              challengeId: session.challengeId,
+            }),
+          }],
+        };
+      },
+    });
+
     // ── HTTP Route: Visual captcha page ─────────────────────────
     api.registerHttpRoute({
       method: "GET",
@@ -506,6 +601,105 @@ export default definePluginEntry({
         });
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      },
+    });
+
+    // ── HTTP Route: Session-based verification page ─────────────
+    api.registerHttpRoute({
+      method: "GET",
+      path: "/nk-captcha/verify",
+      handler: async (req) => {
+        const url = new URL(req.url, "http://localhost");
+        const sessionId = url.searchParams.get("session");
+        const mode = url.searchParams.get("mode") ?? "text";
+
+        if (!sessionId || !sessions.has(sessionId)) {
+          return new Response("<h1>Invalid or expired session</h1>", {
+            status: 404,
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+
+        const session = sessions.get(sessionId)!;
+        if (Date.now() > session.expiresAt) {
+          session.status = "failed";
+          return new Response("<h1>Session expired</h1>", {
+            status: 410,
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+
+        const challenge = CHALLENGES.find((c) => c.id === session.challengeId);
+        if (!challenge) {
+          return new Response("<h1>Challenge not found</h1>", {
+            status: 500,
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+
+        // Serve verification page with session context
+        const html = renderCaptchaPage(locale, Math.ceil((session.expiresAt - Date.now()) / 1000), {
+          enableMediaRecording: mode === "voice",
+          minRecordingDurationMs,
+          sessionId,
+          callbackEndpoint: "/nk-captcha/callback",
+        });
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      },
+    });
+
+    // ── HTTP Route: Callback endpoint ───────────────────────────
+    api.registerHttpRoute({
+      method: "POST",
+      path: "/nk-captcha/callback",
+      handler: async (req) => {
+        const body = await req.json() as {
+          sessionId: string;
+          pass: boolean;
+          challengeId: string;
+          similarity?: number;
+          transcript?: string;
+          code?: string;
+        };
+
+        const session = sessions.get(body.sessionId);
+        if (!session) {
+          return new Response(JSON.stringify({ error: "Session not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        session.status = body.pass ? "verified" : "failed";
+
+        // Forward to callback URL if configured
+        if (session.callbackUrl) {
+          try {
+            await fetch(session.callbackUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                event: "nk_captcha_result",
+                sessionId: body.sessionId,
+                userId: session.userId,
+                pass: body.pass,
+                challengeId: body.challengeId,
+                similarity: body.similarity,
+                transcript: body.transcript,
+                code: body.code,
+                timestamp: new Date().toISOString(),
+              }),
+            });
+          } catch (err) {
+            api.logger.warn(`Callback POST failed: ${err}`);
+          }
+        }
+
+        return new Response(JSON.stringify({ status: "ok", verified: body.pass }), {
+          headers: { "Content-Type": "application/json" },
         });
       },
     });

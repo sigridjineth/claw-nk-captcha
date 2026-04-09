@@ -3,10 +3,17 @@ import { CHALLENGES, type Challenge } from "./challenges.js";
 export function renderCaptchaPage(
   locale: "ko" | "en" | "both",
   timeoutSeconds: number,
-  mediaConfig?: { enableMediaRecording: boolean; minRecordingDurationMs: number },
+  mediaConfig?: {
+    enableMediaRecording: boolean;
+    minRecordingDurationMs: number;
+    sessionId?: string;
+    callbackEndpoint?: string;
+  },
 ): string {
   const enableMedia = mediaConfig?.enableMediaRecording ?? false;
   const minRecordingMs = mediaConfig?.minRecordingDurationMs ?? 1500;
+  const sessionId = mediaConfig?.sessionId ?? '';
+  const callbackEndpoint = mediaConfig?.callbackEndpoint ?? '';
   const challengesJson = JSON.stringify(
     CHALLENGES.map((c) => ({ id: c.id, ko: c.ko, en: c.en, category: c.category, severity: c.severity })),
   );
@@ -173,6 +180,8 @@ const LOCALE = "${locale}";
 const TIMEOUT = ${timeoutSeconds};
 const ENABLE_MEDIA = ${enableMedia};
 const MIN_RECORDING_MS = ${minRecordingMs};
+const SESSION_ID = "${sessionId}";
+const CALLBACK_ENDPOINT = "${callbackEndpoint}";
 
 let currentChallenge = null;
 let timerInterval = null;
@@ -484,11 +493,27 @@ function submitChallenge() {
   const speechPass = !ENABLE_MEDIA || !sttSupported || speechMatch >= 0.5;
   const pass = textPass && speechPass;
 
+  const code = pass ? 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' +
+               Math.random().toString(36).substring(2, 8).toUpperCase() : null;
+
+  // POST result to callback endpoint if session-based
+  if (SESSION_ID && CALLBACK_ENDPOINT) {
+    fetch(CALLBACK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: SESSION_ID,
+        pass: pass,
+        challengeId: currentChallenge.id,
+        similarity: Math.max(simKo, simEn),
+        transcript: speechTranscript || null,
+        code: code,
+      }),
+    }).catch(() => {});
+  }
+
   if (pass) {
-    const code = 'NKCAP-' + Date.now().toString(36).toUpperCase() + '-' +
-                 Math.random().toString(36).substring(2, 8).toUpperCase();
     document.getElementById('verification-code').textContent = code;
-    // Show verification level
     const levelEl = document.getElementById('verification-level');
     if (levelEl) {
       if (ENABLE_MEDIA && sttSupported && speechTranscript) {
