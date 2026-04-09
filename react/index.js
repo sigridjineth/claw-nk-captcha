@@ -66,7 +66,7 @@ const MicIcon = ({color='#666',size=22}) => React.createElement('svg',{width:siz
 
 // ── Main Component ──────────────────────────────────────────
 export default function NkCaptcha({
-  imageUrl = 'https://raw.githubusercontent.com/sigridjineth/claw-nk-captcha/main/assets/kim-photo.png',
+  imageUrl = 'https://raw.githubusercontent.com/sigridjineth/claw-nk-captcha/main/assets/kim-pig.png',
   gridSize: initGrid = 3,
   locale = 'both',
   timeout = 120,

@@ -282,11 +282,17 @@ body {
         Reassemble the scrambled image of <strong>Kim Jong-un</strong> to verify you are not a DPRK operative.
       </p>
       <div class="img-options">
-        <div class="img-opt selected" data-img="photo" onclick="selectImg(this)">
+        <div class="img-opt selected" data-img="pig" onclick="selectImg(this)">
+          <img src="../assets/kim-pig.png" alt="Pig">
+        </div>
+        <div class="img-opt" data-img="photo" onclick="selectImg(this)">
           <img src="../assets/kim-photo.png" alt="Photo">
         </div>
         <div class="img-opt" data-img="mickey" onclick="selectImg(this)">
           <img src="../assets/kim-mickey.png" alt="Mickey">
+        </div>
+        <div class="img-opt" data-img="extra" onclick="selectImg(this)">
+          <img src="../assets/kim-extra.png" alt="Extra">
         </div>
       </div>
       <div class="diff-row">
@@ -345,11 +351,13 @@ body {
 
 <script>
 const IMAGES = {
+  pig: '../assets/kim-pig.png',
   photo: '../assets/kim-photo.png',
   mickey: '../assets/kim-mickey.png',
+  extra: '../assets/kim-extra.png',
 };
 
-let selectedImg = 'photo';
+let selectedImg = 'pig';
 let gridSize = 3;
 let pieces = [];
 let moveCount = 0;
