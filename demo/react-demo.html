@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NK CAPTCHA — React Demo</title>
+<style>
+  body { background: #f0f0f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; font-family: -apple-system, sans-serif; flex-direction: column; gap: 16px; }
+  .log { width: 420px; padding: 12px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 11px; color: #333; min-height: 40px; white-space: pre-wrap; }
+  h3 { font-size: 13px; color: #888; margin: 0; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18",
+    "react-dom": "https://esm.sh/react-dom@18",
+    "react-dom/client": "https://esm.sh/react-dom@18/client",
+    "react/jsx-runtime": "https://esm.sh/react@18/jsx-runtime",
+    "nk-captcha-react": "../react/index.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="root" style="width:420px"></div>
+<h3>Verification Log:</h3>
+<div class="log" id="log">Waiting for verification...</div>
+
+<script type="module">
+import React, { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import NkCaptcha from 'nk-captcha-react';
+
+function App() {
+  return createElement(NkCaptcha, {
+    gridSize: 3,
+    timeout: 120,
+    onVerify: (result) => {
+      const log = document.getElementById('log');
+      if (result.pass) {
+        log.textContent = '\u2705 VERIFIED\nCode: ' + result.code +
+          '\nTranscript: ' + result.transcript +
+          '\nSimilarity: ' + Math.round(result.similarity * 100) + '%' +
+          '\nPuzzle moves: ' + result.puzzleMoves +
+          '\nRecording: ' + result.durationMs + 'ms';
+        log.style.color = '#16a34a';
+      } else {
+        log.textContent = '\uD83D\uDEAB FAILED\nTranscript: ' + (result.transcript || 'none') +
+          '\nSimilarity: ' + Math.round(result.similarity * 100) + '%';
+        log.style.color = '#dc2626';
+      }
+    },
+  });
+}
+
+createRoot(document.getElementById('root')).render(createElement(App));
+</script>
+</body>
+</html>
