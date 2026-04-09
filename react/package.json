@@ -1,0 +1,19 @@
+{
+  "name": "nk-captcha-react",
+  "version": "1.0.0",
+  "description": "React voice recording CAPTCHA — verify users are not DPRK operatives by recording anti-regime phrases",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "peerDependencies": {
+    "react": ">=17.0.0",
+    "react-dom": ">=17.0.0"
+  },
+  "keywords": ["react", "captcha", "voice", "recording", "north-korea", "verification"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sigridjineth/claw-nk-captcha.git",
+    "directory": "react"
+  }
+}

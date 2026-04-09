@@ -50,6 +50,36 @@ With callback:
 
 Also fires `nk-captcha-verified` CustomEvent with `detail: {pass, challengeId, similarity, code}`.
 
+## React Component (Voice Recording)
+
+```bash
+npm install nk-captcha-react
+```
+
+```jsx
+import NkCaptcha from 'nk-captcha-react';
+
+function App() {
+  return (
+    <NkCaptcha
+      locale="both"
+      timeout={60}
+      theme="dark"
+      onVerify={(result) => {
+        if (result.pass) {
+          console.log('Verified!', result.code);
+          console.log('Transcript:', result.transcript);
+          console.log('Similarity:', result.similarity);
+          // result.audioBlob contains the recording
+        }
+      }}
+    />
+  );
+}
+```
+
+The React component is **voice-recording focused** — users must record themselves saying the anti-regime phrase. Uses browser's Web Speech API for real-time transcription and Levenshtein similarity matching.
+
 ## Quick Start
 
 Open `demo/index.html` for the full experience, or `demo/embed.html` for the embeddable widget demo.
