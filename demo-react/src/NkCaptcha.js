@@ -68,7 +68,7 @@ const MicIcon = ({color='#666',size=22}) => React.createElement('svg',{width:siz
 export default function NkCaptcha({
   imageUrl = 'https://raw.githubusercontent.com/sigridjineth/claw-nk-captcha/main/assets/kim-pigface.png',
   gridSize: initGrid = 3,
-  locale = 'both',
+  locale = 'en',
   timeout = 120,
   onVerify,
   className,
@@ -169,7 +169,7 @@ export default function NkCaptcha({
       const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
       if(SR){
         const stt = new SR();
-        stt.continuous=true; stt.interimResults=true; stt.lang='ko-KR';
+        stt.continuous=true; stt.interimResults=true; stt.lang= locale === 'ko' ? 'ko-KR' : 'en-US';
         sttRef.current = stt;
         stt.onresult = ev => {
           let t='';
@@ -305,8 +305,8 @@ export default function NkCaptcha({
       step === 2 && React.createElement('div', {style:{textAlign:'center'}},
         React.createElement('div', {style:{background:'#f9f9f9',border:'1px solid #eee',borderRadius:4,padding:14,marginBottom:16}},
           React.createElement('div',{style:{fontSize:9,color:'#dc2626',letterSpacing:'0.1em',fontWeight:600,marginBottom:6}},'SAY THIS OUT LOUD'),
-          React.createElement('div',{style:{fontSize:18,fontWeight:800,color:'#222',lineHeight:1.4}}, challenge.ko),
-          React.createElement('div',{style:{fontSize:12,color:'#888',marginTop:4,fontStyle:'italic'}}, challenge.en),
+          React.createElement('div',{style:{fontSize:18,fontWeight:800,color:'#222',lineHeight:1.4}}, locale === 'ko' ? challenge.ko : challenge.en),
+          locale === 'both' && React.createElement('div',{style:{fontSize:12,color:'#888',marginTop:4,fontStyle:'italic'}}, locale === 'ko' ? challenge.en : challenge.ko),
         ),
 
         // Mic button

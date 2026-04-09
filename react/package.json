@@ -1,6 +1,6 @@
 {
   "name": "nk-captcha-react",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "React voice recording CAPTCHA — verify users are not DPRK operatives by recording anti-regime phrases",
   "main": "index.js",
   "module": "index.js",
