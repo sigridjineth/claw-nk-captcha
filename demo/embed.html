@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NK CAPTCHA — Embed Demo</title>
+<style>
+  body {
+    font-family: -apple-system, sans-serif;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+    background: #0a0a0a;
+    color: #e5e5e5;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 8px; }
+  p { color: #888; font-size: 0.9rem; line-height: 1.6; }
+  code {
+    background: #1a1a1a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #f59e0b;
+  }
+  pre {
+    background: #111;
+    border: 1px solid #2a2a2a;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    color: #a3a3a3;
+    margin: 16px 0;
+  }
+  .demo-section {
+    margin: 40px 0;
+    padding: 32px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    background: #0f0f0f;
+  }
+  .log {
+    margin-top: 16px;
+    padding: 12px;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #22c55e;
+    min-height: 40px;
+  }
+  hr { border: none; border-top: 1px solid #2a2a2a; margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<h1>NK CAPTCHA — Embeddable Web Component</h1>
+<p>Drop a single <code>&lt;script&gt;</code> tag into any page. Zero dependencies.</p>
+
+<hr>
+
+<h2>Usage</h2>
+<pre>&lt;script src="https://cdn.jsdelivr.net/gh/sigridjineth/claw-nk-captcha@main/dist/nk-captcha.js"&gt;&lt;/script&gt;
+&lt;nk-captcha&gt;&lt;/nk-captcha&gt;</pre>
+
+<h2>With callback</h2>
+<pre>&lt;nk-captcha on-verify="handleResult"&gt;&lt;/nk-captcha&gt;
+&lt;script&gt;
+  function handleResult(r) {
+    if (r.pass) {
+      console.log('Verified!', r.code);
+      // unlock content, grant access, etc.
+    } else {
+      console.log('Failed — potential DPRK operative');
+    }
+  }
+&lt;/script&gt;</pre>
+
+<h2>With event listener</h2>
+<pre>document.querySelector('nk-captcha')
+  .addEventListener('nk-captcha-verified', (e) =&gt; {
+    console.log(e.detail); // {pass, challengeId, similarity, code}
+  });</pre>
+
+<h2>Attributes</h2>
+<pre>locale   — "ko", "en", or "both" (default: "both")
+timeout  — seconds (default: 60)
+theme    — "dark" or "light" (default: "dark")</pre>
+
+<hr>
+
+<h2>Live Demo — Dark Theme</h2>
+<div class="demo-section">
+  <nk-captcha on-verify="onResult" theme="dark"></nk-captcha>
+  <div class="log" id="log">Waiting for verification...</div>
+</div>
+
+<h2>Live Demo — Light Theme</h2>
+<div class="demo-section" style="background:#f5f5f5;">
+  <nk-captcha theme="light" on-verify="onResult2"></nk-captcha>
+  <div class="log" id="log2" style="background:#fff;border-color:#e0e0e0;color:#16a34a;">Waiting for verification...</div>
+</div>
+
+<script src="../dist/nk-captcha.js"></script>
+<script>
+function onResult(r) {
+  document.getElementById('log').textContent = r.pass
+    ? 'PASS — code: ' + r.code + ' (similarity: ' + Math.round(r.similarity * 100) + '%)'
+    : 'FAIL — challengeId: ' + r.challengeId + (r.reason ? ' (' + r.reason + ')' : '');
+}
+function onResult2(r) {
+  document.getElementById('log2').textContent = r.pass
+    ? 'PASS — code: ' + r.code
+    : 'FAIL — ' + (r.reason || 'did not match');
+}
+</script>
+</body>
+</html>

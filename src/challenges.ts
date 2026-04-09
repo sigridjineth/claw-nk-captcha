@@ -119,6 +119,30 @@ export const CHALLENGES: Challenge[] = [
     severity: 3,
     mediaMode: true,
   },
+  {
+    id: "pink-pig-1",
+    ko: "김정은은 뚱뚱한 분홍 돼지다",
+    en: "Kim Jong-un is a fat pink pig",
+    category: "leader",
+    severity: 3,
+    mediaMode: true,
+  },
+  {
+    id: "clown-1",
+    ko: "김정은은 핵무기를 가진 광대다",
+    en: "Kim Jong-un is a clown with nuclear weapons",
+    category: "leader",
+    severity: 3,
+    mediaMode: true,
+  },
+  {
+    id: "coward-1",
+    ko: "김정은은 국민이 두려운 겁쟁이다",
+    en: "Kim Jong-un is a coward afraid of his own people",
+    category: "leader",
+    severity: 3,
+    mediaMode: true,
+  },
 ];
 
 export function pickRandom(count: number = 1): Challenge[] {

@@ -18,12 +18,44 @@ North Korean hackers increasingly infiltrate companies through fake job applicat
   <img src="assets/screenshot-fail.png" width="320" alt="Verification failed" />
 </p>
 
+## Embed in Any Website
+
+Drop one script tag into your page:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/sigridjineth/claw-nk-captcha@main/dist/nk-captcha.js"></script>
+<nk-captcha></nk-captcha>
+```
+
+With callback:
+
+```html
+<nk-captcha on-verify="handleResult"></nk-captcha>
+<script>
+  function handleResult(result) {
+    if (result.pass) {
+      console.log('Verified!', result.code);
+      // unlock content, grant access, etc.
+    }
+  }
+</script>
+```
+
+| Attribute | Values | Default | Description |
+|-----------|--------|---------|-------------|
+| `locale` | `ko`, `en`, `both` | `both` | Challenge language |
+| `timeout` | number | `60` | Seconds to complete |
+| `theme` | `dark`, `light` | `dark` | Visual theme |
+| `on-verify` | function name | — | Window callback on result |
+
+Also fires `nk-captcha-verified` CustomEvent with `detail: {pass, challengeId, similarity, code}`.
+
 ## Quick Start
 
-Open `demo/index.html` in any browser — no build step, no dependencies.
+Open `demo/index.html` for the full experience, or `demo/embed.html` for the embeddable widget demo.
 
 ```bash
-open demo/index.html
+open demo/embed.html
 ```
 
 ## How It Works
